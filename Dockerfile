@@ -2,6 +2,7 @@ FROM ubuntu:bionic
 LABEL maintainer="manuel@peuster.de"
 
 # install required packages
+RUN sed -i s@/archive.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
 RUN apt-get clean
 RUN apt-get update \
     && apt-get install -y  git \

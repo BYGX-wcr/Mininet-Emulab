@@ -1051,7 +1051,7 @@ class Docker ( Host ):
         """Verify if container is alive"""
         container_list = self.dcli.containers(filters={"id": self.did, "status": "running"})
         if len(container_list) == 0:
-            return False;
+            return False
         return True
 
     def _check_image_exists(self, imagename=None, pullImage=False, _id=None):
