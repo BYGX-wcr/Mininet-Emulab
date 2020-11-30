@@ -1866,7 +1866,7 @@ class OVSSwitch( Switch ):
                 success = True
             except select.error as e:
                 # retry on interrupt
-                if e[0] != errno.EINTR:
+                if e != errno.EINTR:
                     raise
         for switch in switches:
             switch.terminate()

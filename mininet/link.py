@@ -479,6 +479,12 @@ class Link( object ):
         intf2 = cls2( name=intfName2, node=node2,
                       link=self, mac=addr2, **params2 )
 
+        # If any ip address has been designated, then set the IP for the interface
+        if params.get('ip1') is not None:
+            intf1.setIP(params.get('ip1'))
+        if params.get('ip2') is not None:
+            intf2.setIP(params.get('ip2'))
+
         # All we are is dust in the wind, and our two interfaces
         self.intf1, self.intf2 = intf1, intf2
 

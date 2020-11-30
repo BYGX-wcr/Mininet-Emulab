@@ -226,10 +226,7 @@ class Mininet( object ):
            params: parameters for host
            returns: added host"""
         # Default IP and MAC addresses
-        defaults = { 'ip': ipAdd( self.nextIP,
-                                  ipBaseNum=self.ipBaseNum,
-                                  prefixLen=self.prefixLen ) +
-                                  '/%s' % self.prefixLen }
+        defaults = dict()
         if self.autoSetMacs:
             defaults[ 'mac' ] = macColonHex( self.nextIP )
         if self.autoPinCpus:
@@ -1004,9 +1001,9 @@ class Mininet( object ):
         elif dst not in self.nameToNode:
             error( 'dst not in network: %s\n' % dst )
         else:
-            if isinstance( src, basestring ):
+            if isinstance( src, str ):
                 src = self.nameToNode[ src ]
-            if isinstance( dst, basestring ):
+            if isinstance( dst, str ):
                 dst = self.nameToNode[ dst ]
             connections = src.connectionsTo( dst )
             if len( connections ) == 0:
@@ -1100,7 +1097,7 @@ class Containernet( Mininet ):
         :return:
         """
         SAPip = SAPSwitch.ip
-        SAPNet = str(ipaddress.IPv4Network(unicode(SAPip), strict=False))
+        SAPNet = str(ipaddress.IPv4Network(str(SAPip), strict=False))
         # due to a bug with python-iptables, removing and finding rules does not succeed when the mininet CLI is running
         # so we use the iptables tool
         # create NAT rule
@@ -1123,7 +1120,7 @@ class Containernet( Mininet ):
     def removeSAPNAT(self, SAPSwitch):
 
         SAPip = SAPSwitch.ip
-        SAPNet = str(ipaddress.IPv4Network(unicode(SAPip), strict=False))
+        SAPNet = str(ipaddress.IPv4Network(str(SAPip), strict=False))
         # due to a bug with python-iptables, removing and finding rules does not succeed when the mininet CLI is running
         # so we use the iptables tool
         rule0_ = "iptables -t nat -D POSTROUTING ! -o {0} -s {1} -j MASQUERADE".format(SAPSwitch.deployed_name, SAPNet)
