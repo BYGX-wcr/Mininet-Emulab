@@ -1,7 +1,7 @@
 class Subnet:
     def __init__(self, ipStr=None, prefixLen=None):
         self.prefixLen = prefixLen
-        self.ipStr = self.getPrefix(ipStr, prefixLen)
+        self.ipStr = self.extractPrefix(ipStr, prefixLen)
         self.ip = Subnet.strToIp(self.ipStr)
         self.ptr = 0 if prefixLen == 32 else 1
         self.limit = pow(2, 32 - prefixLen)
@@ -18,15 +18,38 @@ class Subnet:
             print("Subnet %s/%d has run out of address space!" % {self.ipStr, self.prefixLen})
             return None
 
-        # compute a new ip and update bitmap & pointer
+        # search for an available address
+        while self.bitmap[self.ptr]:
+            self.ptr += 1
+        # compute the new ip and update bitmap & pointer
         newIp = self.ip + self.ptr
         self.bitmap[self.ptr] = True
         self.ptr = self.ptr + 1
 
         return Subnet.ipToStr(newIp) + '/' + str(self.prefixLen)
+    
+    def assignIpAddr(self, ipStr):
+        """
+        Assign a certain ip address designated by arg:ipStr.
+        Return the ip address with netmask if the operation succeeds, none otherwise.
+        """
+        if self.ipStr != Subnet.extractPrefix(ipStr, self.prefixLen):
+            print("Mismatched IP prefix!")
+            return None
+        
+        segmentIndex = Subnet.strToIp(ipStr) - self.ip
+        if self.bitmap[segmentIndex]:
+            print("The IP address has been allocated")
+            return None
+        else:
+            self.bitmap[segmentIndex] = True
+            return ipStr + "/" + str(self.prefixLen)
+
+    def getNetworkPrefix(self):
+        return self.ipStr + "/" + str(self.prefixLen)
 
     @staticmethod
-    def getPrefix(ipStr, prefixLen):
+    def extractPrefix(ipStr, prefixLen):
         """
         Extract the prefix of the arg:ipStr based on arg:prefixLen
         """

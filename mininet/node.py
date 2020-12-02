@@ -559,12 +559,12 @@ class Node( object ):
         """Set the default route to go through intf.
            intf: Intf or {dev <intfname> via <gw-ip> ...}"""
         # Note setParam won't call us if intf is none
-        if isinstance( intf, BaseString ) and ' ' in intf:
+        if isinstance( intf, BaseString ):
             params = intf
         else:
             params = 'dev %s' % intf
         # Do this in one line in case we're messing with the root namespace
-        self.cmd( 'ip route del default; ip route add default', params )
+        self.cmd( 'ip route del default; route add default ', params )
 
     # Convenience and configuration methods
 
@@ -1233,6 +1233,64 @@ class Docker ( Host ):
             error("Problem reading cgroup info: %r\n" % cmd)
             return -1
 
+class DockerRouter( Docker ):
+    """
+    Node that represents a router running in an indepedent container
+    """
+    def __init__(self, name, **kwargs):
+        Docker.__init__(self, name, **kwargs)
+
+        self.daemonsOptions = { 
+            "bgpd" : "no",
+            "ospfd" : "no",
+            "ospf6d" : "no",
+            "ripd" : "no",
+            "ripngd" : "no"
+        }
+        self.daemonsOptions.update(kwargs)
+        self.routingOptions = {
+            "bgpd" : [],
+            "ospfd" : [],
+            "ospf6d" : [],
+            "ripd" : [],
+            "ripngd" : []
+        }
+
+    def start(self):
+        # set daemon configuration file
+        self.configDaemons()
+
+        # if any routing daemon is enabled, write the corresponding config file
+        for protocol in self.routingOptions.keys():
+            if self.daemonsOptions[protocol] == "yes":
+                self.routingConfig(protocol)
+
+        # start quagga
+        self.cmd("/etc/init.d/quagga start")
+
+    def configDaemons(self):
+        configStr = "zebra=yes\\n"
+        configStr += "bgpd=" + self.daemonsOptions["bgpd"] + "\\n"
+        configStr += "ospfd=" + self.daemonsOptions["ospfd"] + "\\n"
+        configStr += "ospf6d=" + self.daemonsOptions["ospf6d"] + "\\n"
+        configStr += "ripd=" + self.daemonsOptions["ripd"] + "\\n"
+        configStr += "ripngd=" + self.daemonsOptions["ripngd"]
+
+        self.cmd("echo -e \"{}\" > /etc/quagga/daemons".format(configStr))
+        print("Configure daemons following %s" % (configStr))
+
+    def routingConfig(self, protocol):
+        configStr = "hostname {}\\n".format(self.name) + "password zebra\\n" + "enable password zebra\\n"
+
+        # append every optional configuration command
+        for i in self.routingOptions[protocol]:
+            configStr += i + "\\n"
+
+        self.cmd("echo -e \"{}\" > /etc/quagga/{}.conf".format(configStr, protocol))
+        print("Configure %s following %s" % (protocol, configStr))
+
+    def addRoutingConfig(self, protocol, configStr):
+        self.routingOptions[protocol].append(configStr)
 
 class CPULimitedHost( Host ):
 

@@ -1052,7 +1052,7 @@ class Containernet( Mininet ):
         Wrapper for addHost method that adds a
         Docker container as a host.
         """
-        return self.addHost( name, cls=cls, **params)
+        return self.addHost(name, cls=cls, **params)
 
     def removeDocker( self, name, **params):
         """
