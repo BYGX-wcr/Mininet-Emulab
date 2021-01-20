@@ -1266,6 +1266,8 @@ class DockerRouter( Docker ):
                 self.routingConfig(protocol)
 
         # start quagga
+        info("Start Quagga Daemons\n")
+        self.cmd("route del default")
         self.cmd("/etc/init.d/quagga start")
 
     def configDaemons(self):
@@ -1291,6 +1293,63 @@ class DockerRouter( Docker ):
 
     def addRoutingConfig(self, protocol, configStr):
         self.routingOptions[protocol].append(configStr)
+
+class DockerP4Router( DockerRouter ):
+    """
+    P4 router running in an indepedent container
+    """
+    def __init__(self, name,
+                 json_path,
+                 target_path = 'simple_switch',
+                 thrift_port = None,
+                 pcap_dump = None,
+                 log_console = False,
+                 verbose = False,
+                 enable_debugger = False, **kwargs):
+        DockerRouter.__init__(self, name, **kwargs)
+        assert(json_path)
+        # make sure that the provided JSON file exists
+        if not os.path.isfile(json_path):
+            error("Invalid JSON file.\n")
+            exit(1)
+        self.json_path = json_path
+        self.target_path = target_path
+        self.verbose = verbose
+        self.thrift_port = thrift_port
+        self.pcap_dump = pcap_dump
+        self.enable_debugger = enable_debugger
+        self.log_console = log_console
+        self.nanomsg = "ipc:///tmp/bm-log.ipc"
+
+    def start(self):
+        """Start up a new P4 switch"""
+        info("Starting P4 switch {}.\n".format(self.name))
+        # sw_path is fixed in container
+        args = [self.target_path]
+        for port, intf in self.intfs.items():
+            args.extend(['-i', str(port) + "@" + intf.name])
+            # add iptable entries to block input packets
+            self.cmd("iptables -t filter -A INPUT -p all -o {} -j DROP".format(intf.name))
+        if self.pcap_dump:
+            args.extend(["--pcap", self.pcap_dump])
+        if self.thrift_port:
+            args.extend(['--thrift-port', str(self.thrift_port)])
+        if self.nanomsg:
+            args.extend(['--nanolog', self.nanomsg])
+        os.system("docker cp " + self.json_path + " " + self.dc['Id'] + ":/running.json")
+        args.append("/running.json")
+        if self.enable_debugger:
+            args.append("--debugger")
+        if self.log_console:
+            args.append("--log-console")
+        logfile = "/tmp/p4s.log"
+        info(' '.join(args) + "\n")
+
+        self.cmd(' '.join(args) + ' >' + logfile + ' 2>&1 &')
+        info("P4 switch {} has been asked to start.\n".format(self.name))
+
+        super().start()
+
 
 class CPULimitedHost( Host ):
 

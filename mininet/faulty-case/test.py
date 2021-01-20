@@ -3,7 +3,9 @@
 This is a simple example to emulate a common network fault, random packet drops on some switch.
 """
 from mininet.net import Containernet
-from mininet.node import Controller, Docker, DockerRouter
+import mininet.node
+print(mininet.node.__file__)
+from mininet.node import * #Controller, Docker, DockerRouter, DockerP4Router
 from mininet.nodelib import LinuxBridge
 from mininet.cli import CLI
 from mininet.link import TCLink
@@ -15,15 +17,23 @@ net = Containernet(controller=Controller)
 
 info('*** Adding docker containers\n')
 
-d1 = net.addDocker('d1', dimage="ubuntu:trusty_v2")
-d2 = net.addDocker('d2', dimage="ubuntu:trusty_v2")
-d3 = net.addDocker('d3', dimage="ubuntu:trusty_v2")
-d4 = net.addDocker('d4', dimage="ubuntu:trusty_v2")
+d1 = net.addDocker('d1', dimage="ubuntu:trusty_v1")
+d2 = net.addDocker('d2', dimage="ubuntu:trusty_v1")
+d3 = net.addDocker('d3', dimage="ubuntu:trusty_v1")
+d4 = net.addDocker('d4', dimage="ubuntu:trusty_v1")
 
 info('*** Adding switches\n')
 
-s1 = net.addDocker('s1', cls=DockerRouter, dimage="ubuntu:trusty_router", ospfd='yes')
-s2 = net.addDocker('s2', cls=DockerRouter, dimage="ubuntu:trusty_router", ospfd='yes')
+s1 = net.addDocker('s1', cls=DockerP4Router, 
+                         dimage="p4switch:v1",
+                         json_path="/home/wcr/behavioral-model/mininet/simple_router.json", 
+                         pcap_dump="/",
+                         ospfd='yes')
+s2 = net.addDocker('s2', cls=DockerP4Router, 
+                         dimage="p4switch:v1", 
+                         json_path="/home/wcr/behavioral-model/mininet/simple_router.json", 
+                         pcap_dump="/",
+                         ospfd='yes')
 # b1 = net.addSwitch('b1', cls=LinuxBridge)
 b2 = net.addSwitch('b2', cls=LinuxBridge)
 
@@ -48,14 +58,14 @@ s1.addRoutingConfig("ospfd", "router-id 10.0.0.1")
 s1.addRoutingConfig("ospfd", "network " + snet1.getNetworkPrefix() + " area 0")
 s1.addRoutingConfig("ospfd", "network " + snet2.getNetworkPrefix() + " area 1")
 s1.addRoutingConfig("ospfd", "network " + snet3.getNetworkPrefix() + " area 2")
-s1.addRoutingConfig("ospfd", "log file /wcr.log")
+s1.addRoutingConfig("ospfd", "log file tmp/wcr.log")
 s1.start()
 
 s2.addRoutingConfig("ospfd", "router ospf")
 s2.addRoutingConfig("ospfd", "router-id 10.0.0.2")
 s2.addRoutingConfig("ospfd", "network " + snet1.getNetworkPrefix() + " area 0")
 s2.addRoutingConfig("ospfd", "network " + snet4.getNetworkPrefix() + " area 1")
-s2.addRoutingConfig("ospfd", "log file /wcr.log")
+s2.addRoutingConfig("ospfd", "log file tmp/wcr.log")
 s2.start()
 
 d1.setDefaultRoute("gw 10.1.0.1")
