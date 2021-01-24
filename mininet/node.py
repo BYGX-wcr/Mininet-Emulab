@@ -1305,7 +1305,9 @@ class DockerP4Router( DockerRouter ):
                  pcap_dump = None,
                  log_console = False,
                  verbose = False,
-                 enable_debugger = False, **kwargs):
+                 enable_debugger = False,
+                 controller = None,
+                 **kwargs):
         DockerRouter.__init__(self, name, **kwargs)
         assert(json_path)
         # make sure that the provided JSON file exists
@@ -1320,11 +1322,13 @@ class DockerP4Router( DockerRouter ):
         self.enable_debugger = enable_debugger
         self.log_console = log_console
         self.nanomsg = "ipc:///tmp/bm-log.ipc"
+        self.controller = controller
 
     def start(self):
         """Start up a new P4 switch"""
         info("Starting P4 switch {}.\n".format(self.name))
-        # sw_path is fixed in container
+
+        # merge arguments
         args = [self.target_path]
         for port, intf in self.intfs.items():
             args.extend(['-i', str(port) + "@" + intf.name])
@@ -1336,17 +1340,23 @@ class DockerP4Router( DockerRouter ):
             args.extend(['--thrift-port', str(self.thrift_port)])
         if self.nanomsg:
             args.extend(['--nanolog', self.nanomsg])
-        os.system("docker cp " + self.json_path + " " + self.dc['Id'] + ":/running.json")
-        args.append("/running.json")
         if self.enable_debugger:
             args.append("--debugger")
         if self.log_console:
             args.append("--log-console")
-        logfile = "/tmp/p4s.log"
-        info(' '.join(args) + "\n")
+        args.append("/tmp/running.json")
+        info("cmd: " + ' '.join(args) + "\n")
 
-        self.cmd(' '.join(args) + ' >' + logfile + ' 2>&1 &')
-        info("P4 switch {} has been asked to start.\n".format(self.name))
+        # import json file
+        os.system("docker cp " + self.json_path + " " + self.dc['Id'] + ":/tmp/running.json")
+
+        # import controller if path is not null
+        if self.controller:
+            os.system("docker cp " + self.controller + " " + self.dc['Id'] + ":/tmp/controller")
+
+        print(self.cmd(' '.join(args) + ' >/tmp/p4bm.log 2>&1 &'))
+        print(self.cmd("/tmp/controller"))
+        print(self.cmd("iptables -t filter -A INPUT -j NFQUEUE --queue-num 0"))
 
         super().start()
 
