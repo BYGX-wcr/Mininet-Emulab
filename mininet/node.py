@@ -66,7 +66,7 @@ from time import sleep
 from mininet.log import info, error, warn, debug
 from mininet.util import ( quietRun, errRun, errFail, moveIntf, isShellBuiltin,
                            numCores, retry, mountCgroups, BaseString, decode,
-                           encode, Python3, which )
+                           encode, Python3, which, makeIntfPair )
 from mininet.moduledeps import moduleDeps, pathCheck, TUN
 from mininet.link import Link, Intf, TCIntf, OVSIntf
 from re import findall
@@ -696,7 +696,7 @@ class Host( Node ):
     pass
 
 
-class Docker ( Host ):
+class Docker ( Node ):
     """Node that represents a docker container.
     This part is inspired by:
     http://techandtrains.com/2014/08/21/docker-container-as-mininet-host/
@@ -1302,6 +1302,8 @@ class DockerP4Router( DockerRouter ):
                  json_path,
                  target_path = 'simple_switch',
                  thrift_port = None,
+                 cpu_input_port = 80,
+                 cpu_output_port = 81,
                  pcap_dump = None,
                  log_console = False,
                  verbose = False,
@@ -1323,6 +1325,8 @@ class DockerP4Router( DockerRouter ):
         self.log_console = log_console
         self.nanomsg = "ipc:///tmp/bm-log.ipc"
         self.controller = controller
+        self.cpu_input_port = 80
+        self.cpu_output_port = 81
 
     def start(self):
         """Start up a new P4 switch"""
@@ -1333,7 +1337,8 @@ class DockerP4Router( DockerRouter ):
         for port, intf in self.intfs.items():
             args.extend(['-i', str(port) + "@" + intf.name])
             # add iptable entries to block input packets
-            self.cmd("iptables -t filter -A INPUT -p all -o {} -j DROP".format(intf.name))
+            print(self.cmd("iptables -t filter -A INPUT -p all -i {} -j DROP".format(intf.name)))
+            print(self.cmd("iptables -t filter -A OUTPUT -o {} -j NFQUEUE --queue-num 0".format(intf.name)))
         if self.pcap_dump:
             args.extend(["--pcap", self.pcap_dump])
         if self.thrift_port:
@@ -1344,19 +1349,34 @@ class DockerP4Router( DockerRouter ):
             args.append("--debugger")
         if self.log_console:
             args.append("--log-console")
+
+        # create & start a veth pair for CPU(Control-plane) input port
+        makeIntfPair("dp-egress", "cp-ingress", node1=self, node2=self, addr1="aa:00:00:00:00:00", addr2="aa:00:00:00:00:01")
+        args.extend(['-i', str(self.cpu_input_port) + '@' + "dp-egress"])
+        self.cmd("ifconfig dp-egress up")
+        self.cmd("ifconfig cp-ingress up")
+        self.cmd("iptables -t filter -A OUTPUT -p all -o dp-egress -j DROP")
+        self.cmd("iptables -t filter -A OUTPUT -p all -o cp-ingress -j DROP")
+
+        # create & start a veth pair for CPU(Control-plane) output port
+        makeIntfPair("dp-ingress", "cp-egress", node1=self, node2=self, addr1="aa:00:00:00:00:02", addr2="aa:00:00:00:00:03")
+        args.extend(['-i', str(self.cpu_output_port) + '@' + "dp-ingress"])
+        self.cmd("ifconfig dp-ingress up")
+        self.cmd("ifconfig cp-egress up")
+        self.cmd("iptables -t filter -A INPUT -p all -i dp-ingress -j DROP")
+        self.cmd("iptables -t filter -A INPUT -p all -i cp-egress -j DROP")
+
+        # import json file & merge arguments
+        os.system("docker cp " + self.json_path + " " + self.dc['Id'] + ":/tmp/running.json")
         args.append("/tmp/running.json")
         info("cmd: " + ' '.join(args) + "\n")
-
-        # import json file
-        os.system("docker cp " + self.json_path + " " + self.dc['Id'] + ":/tmp/running.json")
 
         # import controller if path is not null
         if self.controller:
             os.system("docker cp " + self.controller + " " + self.dc['Id'] + ":/tmp/controller")
 
         print(self.cmd(' '.join(args) + ' >/tmp/p4bm.log 2>&1 &'))
-        print(self.cmd("/tmp/controller"))
-        print(self.cmd("iptables -t filter -A INPUT -j NFQUEUE --queue-num 0"))
+        # print(self.cmd("/tmp/controller > /tmp/controller.log 2>&1 &"))
 
         super().start()
 

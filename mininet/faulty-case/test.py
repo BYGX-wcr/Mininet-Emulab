@@ -26,9 +26,9 @@ info('*** Adding switches\n')
 
 s1 = net.addDocker('s1', cls=DockerP4Router, 
                          dimage="p4switch:v2",
-                         json_path="/home/wcr/behavioral-model/mininet/simple_router.json", 
+                         json_path="/home/wcr/p4switch/simple_switch.json", 
                          pcap_dump="/",
-                         controller="~/nf-queue",
+                         controller="~/controller/nf-queue",
                          ospfd='yes')
 # s2 = net.addDocker('s2', cls=DockerP4Router, 
 #                          dimage="p4switch:v1", 
@@ -47,8 +47,8 @@ snet4 = Subnet(ipStr="10.3.0.0", prefixLen=24)
 info('*** Creating links\n')
 
 # net.addLink(s2, s1, ip1=snet1.assignIpAddr("10.0.0.2"), ip2=snet1.assignIpAddr("10.0.0.1"))
-net.addLink(s1, d1, ip1=snet2.assignIpAddr("10.1.0.1"), ip2=snet2.allocateIPAddr())
-net.addLink(s1, d2, ip1=snet3.assignIpAddr("10.2.0.1"), ip2=snet3.allocateIPAddr())
+net.addLink(s1, d1, ip1=snet2.assignIpAddr("10.1.0.1"), ip2=snet2.allocateIPAddr(), addr1='00:00:00:00:01:00', addr2='00:00:00:00:02:00')
+net.addLink(s1, d2, ip1=snet3.assignIpAddr("10.2.0.1"), ip2=snet3.allocateIPAddr(), addr1='00:00:00:00:01:01', addr2='00:00:00:00:02:01')
 # net.addLink(b2, s2, ip2=snet4.assignIpAddr("10.3.0.1"))
 # net.addLink(b2, d3, ip2=snet4.allocateIPAddr())
 # net.addLink(b2, d4, ip2=snet4.allocateIPAddr())
