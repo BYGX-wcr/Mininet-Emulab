@@ -11,6 +11,7 @@ from mininet.cli import CLI
 from mininet.link import TCLink
 from mininet.log import info, setLogLevel
 from mininet.config import Subnet
+import os
 setLogLevel('info')
 
 net = Containernet(controller=Controller)
@@ -26,9 +27,9 @@ info('*** Adding switches\n')
 
 s1 = net.addDocker('s1', cls=DockerP4Router, 
                          dimage="p4switch:v2",
-                         json_path="/home/wcr/p4switch/simple_switch.json", 
+                         json_path="/home/wcr/p4switch/basic_switch.json", 
                          pcap_dump="/",
-                         controller="~/controller/nf-queue",
+                         controller="~/controller/test-controller.o",
                          ospfd='yes')
 # s2 = net.addDocker('s2', cls=DockerP4Router, 
 #                          dimage="p4switch:v1", 
@@ -54,12 +55,12 @@ net.addLink(s1, d2, ip1=snet3.assignIpAddr("10.2.0.1"), ip2=snet3.allocateIPAddr
 # net.addLink(b2, d4, ip2=snet4.allocateIPAddr())
 
 info('*** Configuring routes\n')
-s1.addRoutingConfig("ospfd", "router ospf")
-s1.addRoutingConfig("ospfd", "router-id 10.0.0.1")
-s1.addRoutingConfig("ospfd", "network " + snet1.getNetworkPrefix() + " area 0")
-s1.addRoutingConfig("ospfd", "network " + snet2.getNetworkPrefix() + " area 1")
-s1.addRoutingConfig("ospfd", "network " + snet3.getNetworkPrefix() + " area 2")
-s1.addRoutingConfig("ospfd", "log file tmp/quagga.log")
+# s1.addRoutingConfig("ospfd", "router ospf")
+# s1.addRoutingConfig("ospfd", "router-id 10.0.0.1")
+# s1.addRoutingConfig("ospfd", "network " + snet1.getNetworkPrefix() + " area 0")
+# s1.addRoutingConfig("ospfd", "network " + snet2.getNetworkPrefix() + " area 1")
+# s1.addRoutingConfig("ospfd", "network " + snet3.getNetworkPrefix() + " area 2")
+# s1.addRoutingConfig("ospfd", "log file tmp/quagga.log")
 s1.start()
 
 # s2.addRoutingConfig("ospfd", "router ospf")
@@ -73,6 +74,14 @@ d1.setDefaultRoute("gw 10.1.0.1")
 d2.setDefaultRoute("gw 10.2.0.1")
 # d3.setDefaultRoute("gw 10.3.0.1")
 # d4.setDefaultRoute("gw 10.3.0.1")
+
+info('*** Exp Setup\n')
+os.system("docker cp ~/p4switch/commands.txt mn.s1:/")
+os.system("docker cp ~/server mn.s1:/")
+os.system("docker cp ~/client mn.d1:/")
+s1.cmd("sysctl net.ipv4.conf.all.rp_filter=0")
+s1.cmd("sysctl net.ipv4.conf.cp-ingress.rp_filter=0")
+s1.cmd("ifconfig cp-ingress down; ifconfig cp-ingress up")
 
 info('*** Starting network\n')
 

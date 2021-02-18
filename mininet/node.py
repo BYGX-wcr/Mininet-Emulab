@@ -1332,13 +1332,31 @@ class DockerP4Router( DockerRouter ):
         """Start up a new P4 switch"""
         info("Starting P4 switch {}.\n".format(self.name))
 
+        # create & start a veth pair for CPU(Control-plane) input port
+        makeIntfPair("dp-egress", "cp-ingress", node1=self, node2=self, addr1="aa:00:00:00:00:00", addr2="aa:00:00:00:00:01")     
+        self.cmd("ifconfig dp-egress up")
+        self.cmd("ifconfig cp-ingress up")
+        self.cmd("iptables -t filter -A OUTPUT -p all -o dp-egress -j DROP")
+        self.cmd("iptables -t filter -A OUTPUT -p all -o cp-ingress -j DROP")
+
+        # create & start a veth pair for CPU(Control-plane) output port
+        makeIntfPair("dp-ingress", "cp-egress", node1=self, node2=self, addr1="aa:00:00:00:00:02", addr2="aa:00:00:00:00:03")
+        self.cmd("ifconfig dp-ingress up")
+        self.cmd("ifconfig cp-egress up")
+        self.cmd("iptables -t filter -A INPUT -p all -i dp-ingress -j DROP")
+        self.cmd("iptables -t filter -A INPUT -p all -i cp-egress -j DROP")
+
+        # setup route table 1
+        self.cmd("ip route add default dev cp-egress table 1")
+
         # merge arguments
         args = [self.target_path]
         for port, intf in self.intfs.items():
             args.extend(['-i', str(port) + "@" + intf.name])
             # add iptable entries to block input packets
             print(self.cmd("iptables -t filter -A INPUT -p all -i {} -j DROP".format(intf.name)))
-            print(self.cmd("iptables -t filter -A OUTPUT -o {} -j NFQUEUE --queue-num 0".format(intf.name)))
+            # add ip route policy rules to route all outgoing packets to cp-egress interface
+            print(self.cmd("ip rule add type unicast oif {} table 1".format(intf.name)))
         if self.pcap_dump:
             args.extend(["--pcap", self.pcap_dump])
         if self.thrift_port:
@@ -1349,22 +1367,9 @@ class DockerP4Router( DockerRouter ):
             args.append("--debugger")
         if self.log_console:
             args.append("--log-console")
-
-        # create & start a veth pair for CPU(Control-plane) input port
-        makeIntfPair("dp-egress", "cp-ingress", node1=self, node2=self, addr1="aa:00:00:00:00:00", addr2="aa:00:00:00:00:01")
+        
         args.extend(['-i', str(self.cpu_input_port) + '@' + "dp-egress"])
-        self.cmd("ifconfig dp-egress up")
-        self.cmd("ifconfig cp-ingress up")
-        self.cmd("iptables -t filter -A OUTPUT -p all -o dp-egress -j DROP")
-        self.cmd("iptables -t filter -A OUTPUT -p all -o cp-ingress -j DROP")
-
-        # create & start a veth pair for CPU(Control-plane) output port
-        makeIntfPair("dp-ingress", "cp-egress", node1=self, node2=self, addr1="aa:00:00:00:00:02", addr2="aa:00:00:00:00:03")
         args.extend(['-i', str(self.cpu_output_port) + '@' + "dp-ingress"])
-        self.cmd("ifconfig dp-ingress up")
-        self.cmd("ifconfig cp-egress up")
-        self.cmd("iptables -t filter -A INPUT -p all -i dp-ingress -j DROP")
-        self.cmd("iptables -t filter -A INPUT -p all -i cp-egress -j DROP")
 
         # import json file & merge arguments
         os.system("docker cp " + self.json_path + " " + self.dc['Id'] + ":/tmp/running.json")
