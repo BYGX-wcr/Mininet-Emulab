@@ -1333,30 +1333,34 @@ class DockerP4Router( DockerRouter ):
         info("Starting P4 switch {}.\n".format(self.name))
 
         # create & start a veth pair for CPU(Control-plane) input port
-        makeIntfPair("dp-egress", "cp-ingress", node1=self, node2=self, addr1="aa:00:00:00:00:00", addr2="aa:00:00:00:00:01")     
-        self.cmd("ifconfig dp-egress up")
-        self.cmd("ifconfig cp-ingress up")
+        makeIntfPair("dp-egress", "cp-ingress", node1=self, node2=self, addr1="aa:00:00:00:00:01", addr2="aa:00:00:00:00:02")     
+        self.cmd("ifconfig dp-egress up 127.0.1.1")
+        self.cmd("ifconfig cp-ingress up 127.0.1.2")
         self.cmd("iptables -t filter -A OUTPUT -p all -o dp-egress -j DROP")
         self.cmd("iptables -t filter -A OUTPUT -p all -o cp-ingress -j DROP")
 
         # create & start a veth pair for CPU(Control-plane) output port
-        makeIntfPair("dp-ingress", "cp-egress", node1=self, node2=self, addr1="aa:00:00:00:00:02", addr2="aa:00:00:00:00:03")
-        self.cmd("ifconfig dp-ingress up")
-        self.cmd("ifconfig cp-egress up")
+        makeIntfPair("dp-ingress", "cp-egress", node1=self, node2=self, addr1="aa:00:00:00:00:03", addr2="aa:00:00:00:00:04")
+        self.cmd("ifconfig dp-ingress up 127.0.1.3")
+        self.cmd("ifconfig cp-egress up 127.0.1.4")
         self.cmd("iptables -t filter -A INPUT -p all -i dp-ingress -j DROP")
         self.cmd("iptables -t filter -A INPUT -p all -i cp-egress -j DROP")
 
         # setup route table 1
-        self.cmd("ip route add default dev cp-egress table 1")
+        print(self.cmd("ip route add default via 127.0.1.3 dev cp-egress table 1"))
+        # Configure Policy Routing
+        print(self.cmd("ip rule add fwmark 0x8 table 1"))
+        # setup arp entry for dp-ingress interface
+        print(self.cmd("arp -s -i cp-egress 127.0.1.3 aa:00:00:00:00:03"))
 
         # merge arguments
         args = [self.target_path]
         for port, intf in self.intfs.items():
             args.extend(['-i', str(port) + "@" + intf.name])
-            # add iptable entries to block input packets
+            # add iptables entries to block input packets
             print(self.cmd("iptables -t filter -A INPUT -p all -i {} -j DROP".format(intf.name)))
-            # add ip route policy rules to route all outgoing packets to cp-egress interface
-            print(self.cmd("ip rule add type unicast oif {} table 1".format(intf.name)))
+            # add iptables entries to mark output packets
+            print(self.cmd("iptables -t mangle -A OUTPUT -p all -o {} -j MARK --set-mark 0x8".format(intf.name)))
         if self.pcap_dump:
             args.extend(["--pcap", self.pcap_dump])
         if self.thrift_port:
@@ -1381,7 +1385,7 @@ class DockerP4Router( DockerRouter ):
             os.system("docker cp " + self.controller + " " + self.dc['Id'] + ":/tmp/controller")
 
         print(self.cmd(' '.join(args) + ' >/tmp/p4bm.log 2>&1 &'))
-        # print(self.cmd("/tmp/controller > /tmp/controller.log 2>&1 &"))
+        print(self.cmd("/tmp/controller > /tmp/controller.log 2>&1 &"))
 
         super().start()
 
