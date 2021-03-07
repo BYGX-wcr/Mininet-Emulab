@@ -1,3 +1,5 @@
+import mininet.node
+
 class Subnet:
     def __init__(self, ipStr=None, prefixLen=None):
         self.prefixLen = prefixLen
@@ -6,6 +8,7 @@ class Subnet:
         self.ptr = 0 if prefixLen == 32 else 1
         self.limit = pow(2, 32 - prefixLen)
         self.bitmap = [0] * self.limit
+        self.nodeList = []
 
         if self.prefixLen is None or self.ipStr is None:
             print("Configuration is invalid, prefixLen: %s, ipStr: %s" % (prefixLen, ipStr))
@@ -48,6 +51,53 @@ class Subnet:
     def getNetworkPrefix(self):
         return self.ipStr + "/" + str(self.prefixLen)
 
+    def getPrefixLen(self):
+        return self.prefixLen
+
+    def addNode(self, node1, node2=None):
+        """
+        Add one node or a node pair into subnet 
+        """
+        assert node1 != None
+        self.nodeList.append(node1)
+        if node2 != None:
+            self.nodeList.append(node2)
+    
+    def installSubnetTable(self):
+        """
+        Install MAC table entries for each node in the subnet
+        """
+        if self.limit == 1:
+            print("No need to install mac tables")
+            return
+
+        macTable = []
+        for i in range(0, self.limit):
+            if self.bitmap[i]:
+                ip = self.ip + i
+                macTable.append([Subnet.ipToStr(ip), Subnet.ipToMac(Subnet.ipToStr(ip))])
+
+        for node in self.nodeList:
+            if issubclass(type(node), mininet.node.DockerRouter):
+                node.installSubnetTable(macTable, self)
+
+    @staticmethod
+    def ipToMac(ipStr):
+        if '/' in ipStr:
+            ipStr = ipStr.split('/')[0]
+        macSuffix = ['0'] * 8
+        ip = Subnet.strToIp(ipStr)
+        pos = 8
+        while ip != 0:
+            pos = pos - 1
+            macSuffix[pos] = hex(ip % 16)[2:]
+            ip = ip >> 4
+
+        macStr = "00:00"
+        for i in range(0, 8, 2):
+            macStr += ":{}{}".format(macSuffix[i], macSuffix[i+1])
+        return macStr
+
     @staticmethod
     def extractPrefix(ipStr, prefixLen):
         """
@@ -88,3 +138,4 @@ if __name__ == "__main__":
     b = snet.allocateIPAddr()
     print(a)
     print(b)
+    print(Subnet.ipToMac(a))

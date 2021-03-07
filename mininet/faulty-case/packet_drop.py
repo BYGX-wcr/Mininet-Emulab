@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 """
 This is a simple example to emulate a common network fault, random packet drops on some switch.
 """

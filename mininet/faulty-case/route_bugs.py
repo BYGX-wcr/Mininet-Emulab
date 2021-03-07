@@ -22,8 +22,8 @@ d4 = net.addDocker('d4', dimage="ubuntu:trusty")
 
 info('*** Adding switches\n')
 
-s1 = net.addDocker('s1', cls=DockerRouter, dimage="p4switch_base:latest", ospfd='yes')
-s2 = net.addDocker('s2', cls=DockerRouter, dimage="p4switch_base:latest", ospfd='yes')
+s1 = net.addDocker('s1', cls=DockerRouter, dimage="p4switch:v3", ospfd='yes')
+s2 = net.addDocker('s2', cls=DockerRouter, dimage="p4switch:v3", ospfd='yes')
 # b1 = net.addSwitch('b1', cls=LinuxBridge)
 b2 = net.addSwitch('b2', cls=LinuxBridge)
 
@@ -50,6 +50,7 @@ s1.addRoutingConfig("ospfd", "network " + snet2.getNetworkPrefix() + " area 1")
 s1.addRoutingConfig("ospfd", "network " + snet3.getNetworkPrefix() + " area 2")
 s1.addRoutingConfig("ospfd", "log file tmp/quagga.log")
 s1.start()
+s1.cmd("tcpdump -i s1-eth0 -w /wcr.pcap &")
 
 s2.addRoutingConfig("ospfd", "router ospf")
 s2.addRoutingConfig("ospfd", "router-id 10.0.0.2")
@@ -57,6 +58,7 @@ s2.addRoutingConfig("ospfd", "network " + snet1.getNetworkPrefix() + " area 0")
 s2.addRoutingConfig("ospfd", "network " + snet4.getNetworkPrefix() + " area 1")
 s2.addRoutingConfig("ospfd", "log file tmp/quagga.log")
 s2.start()
+s2.cmd("tcpdump -i s2-eth0 -w /wcr.pcap &")
 
 d1.setDefaultRoute("gw 10.1.0.1")
 d2.setDefaultRoute("gw 10.2.0.1")

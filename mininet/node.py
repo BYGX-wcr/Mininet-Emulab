@@ -69,6 +69,7 @@ from mininet.util import ( quietRun, errRun, errFail, moveIntf, isShellBuiltin,
                            encode, Python3, which, makeIntfPair )
 from mininet.moduledeps import moduleDeps, pathCheck, TUN
 from mininet.link import Link, Intf, TCIntf, OVSIntf
+from mininet.config import Subnet
 from re import findall
 from distutils.version import StrictVersion
 
@@ -1328,23 +1329,86 @@ class DockerP4Router( DockerRouter ):
         self.cpu_input_port = 80
         self.cpu_output_port = 81
 
+    def installSubnetTable(self, macTable, subnet, DMTName="DstMac_RW", DMTAction="set_dmac", LpmName="Ipv4_FIB", LpmAction="ipv4_forward"):
+        """
+        Prepare subnet entries of the Dst MAC table and Ipv4 LPm table,.
+        """
+        filename = "./Subnet-{}.txt".format(self.name)
+        with open(filename, "a", encoding="utf-8") as file:
+            # write DMT commands into the file
+            for entry in macTable:
+                file.write("table_add {} {} {} => {}\n".format(DMTName, DMTAction, entry[0], entry[1]))
+
+            prefixLen = subnet.getPrefixLen()
+            # write LPM commands into the file
+            for port, intf in self.intfs.items():
+                ip = intf.IP()
+                if subnet.extractPrefix(ip, prefixLen)+"/"+str(prefixLen) == subnet.getNetworkPrefix():
+                    file.write("table_add {} {} 0.0.0.0&&&0.0.0.0  {} => 0.0.0.1 {} {}\n".format(LpmName, LpmAction, subnet.getNetworkPrefix(), port, 1))
+                    break
+
+    def installStartupTables(self, SMTName="SrcMac_RW", SMTAction="set_smac", DMTName="DstMac_RW", DMTAction="set_dmac", LpmName="Ipv4_FIB", LpmAction="ipv4_forward"):
+        """
+        Prepare entries for the local switch interfaces including data ports, control-plane ports and data-plane ports.
+        SMT -> Source Mac Table
+        DMT -> Destination Mac Table
+        """
+        filename = "./Startup-{}.txt".format(self.name)
+        with open(filename, "w", encoding="utf-8") as file:
+            # write commands into the file
+
+            # prepare dp-egress and local data port entries for src mac table
+            file.write("table_add {} {} {} => {}\n".format(SMTName, SMTAction, self.cpu_input_port, "aa:00:00:00:00:01"))
+            for port, intf in self.intfs.items():
+                mac = intf.MAC()
+                file.write("table_add {} {} {} => {}\n".format(SMTName, SMTAction, port, mac))
+            
+            # prepare the cp-ingress entry for dst mac table
+            file.write("table_add {} {} {} => {}\n".format(DMTName, DMTAction, "0.0.0.0", "aa:00:00:00:00:02"))
+
+            # prepare local data port entries for ipv4 LPM table
+            for port, intf in self.intfs.items():
+                ip = intf.IP()
+                file.write("table_add {} {} 0.0.0.0&&&0.0.0.0  {}/32 => 0.0.0.0 {} {}\n".format(LpmName, LpmAction, ip, self.cpu_input_port, 1))
+        
+        # copy the file into the tmp directory of docker container
+        print(os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/Startup_cmds"))
+
+        # remove the file
+        os.remove(filename)
+
+        # copy the subnet file into the tmp directory of docker container
+        filename = "./Subnet-{}.txt".format(self.name)
+        print(os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/Subnet_cmds"))
+
+        # remove the subnet file
+        os.remove(filename)
+
     def start(self):
         """Start up a new P4 switch"""
         info("Starting P4 switch {}.\n".format(self.name))
 
         # create & start a veth pair for CPU(Control-plane) input port
         makeIntfPair("dp-egress", "cp-ingress", node1=self, node2=self, addr1="aa:00:00:00:00:01", addr2="aa:00:00:00:00:02")     
-        self.cmd("ifconfig dp-egress up 127.0.1.1")
-        self.cmd("ifconfig cp-ingress up 127.0.1.2")
+        self.cmd("ifconfig dp-egress up 127.0.1.1/24")
+        self.cmd("ifconfig cp-ingress up 127.0.1.2/24")
         self.cmd("iptables -t filter -A OUTPUT -p all -o dp-egress -j DROP")
         self.cmd("iptables -t filter -A OUTPUT -p all -o cp-ingress -j DROP")
 
         # create & start a veth pair for CPU(Control-plane) output port
         makeIntfPair("dp-ingress", "cp-egress", node1=self, node2=self, addr1="aa:00:00:00:00:03", addr2="aa:00:00:00:00:04")
-        self.cmd("ifconfig dp-ingress up 127.0.1.3")
-        self.cmd("ifconfig cp-egress up 127.0.1.4")
+        self.cmd("ifconfig dp-ingress up 127.0.1.3/24")
+        self.cmd("ifconfig cp-egress up 127.0.1.4/24")
         self.cmd("iptables -t filter -A INPUT -p all -i dp-ingress -j DROP")
         self.cmd("iptables -t filter -A INPUT -p all -i cp-egress -j DROP")
+
+        # disable rp_filters
+        self.cmd("sysctl net.ipv4.conf.all.rp_filter=0")
+        self.cmd("sysctl net.ipv4.conf.cp-ingress.rp_filter=0")
+        self.cmd("ifconfig cp-ingress down; ifconfig cp-ingress up")
+
+        # disable linux routing
+        self.cmd("sysctl net.ipv4.ip_forward=0")
 
         # setup route table 1
         print(self.cmd("ip route add default via 127.0.1.3 dev cp-egress table 1"))
@@ -1357,8 +1421,11 @@ class DockerP4Router( DockerRouter ):
         args = [self.target_path]
         for port, intf in self.intfs.items():
             args.extend(['-i', str(port) + "@" + intf.name])
+
             # add iptables entries to block input packets
-            print(self.cmd("iptables -t filter -A INPUT -p all -i {} -j DROP".format(intf.name)))
+            print(self.cmd("iptables -t filter -A INPUT -p ospf -i {} -j ACCEPT".format(intf.name))) # exclude OSPF packets
+            print(self.cmd("iptables -t filter -A INPUT -p all ! -d 224.0.0.0/4 -i {} -j DROP".format(intf.name))) # exclude multicast packets for reserved addresses
+
             # add iptables entries to mark output packets
             print(self.cmd("iptables -t mangle -A OUTPUT -p all -o {} -j MARK --set-mark 0x8".format(intf.name)))
         if self.pcap_dump:
@@ -1371,7 +1438,7 @@ class DockerP4Router( DockerRouter ):
             args.append("--debugger")
         if self.log_console:
             args.append("--log-console")
-        
+        # bind data-plane ports
         args.extend(['-i', str(self.cpu_input_port) + '@' + "dp-egress"])
         args.extend(['-i', str(self.cpu_output_port) + '@' + "dp-ingress"])
 
@@ -1380,12 +1447,19 @@ class DockerP4Router( DockerRouter ):
         args.append("/tmp/running.json")
         info("cmd: " + ' '.join(args) + "\n")
 
-        # import controller if path is not null
+        # import controller, rt_mediator if path is not null
         if self.controller:
             os.system("docker cp " + self.controller + " " + self.dc['Id'] + ":/tmp/controller")
 
-        print(self.cmd(' '.join(args) + ' >/tmp/p4bm.log 2>&1 &'))
-        print(self.cmd("/tmp/controller > /tmp/controller.log 2>&1 &"))
+        # start programs
+        print(self.cmd(' '.join(args) + ' >/tmp/p4bm.log 2>&1 &')) # p4 bmv2
+        if self.controller != None:
+            print(self.cmd("python3 /tmp/controller > /tmp/controller.log 2>&1 &")) # controller if exist
+
+        self.installStartupTables()
+        # install initial table entries
+        self.cmd("simple_switch_CLI < /tmp/Startup_cmds")
+        self.cmd("simple_switch_CLI < /tmp/Subnet_cmds")
 
         super().start()
 
