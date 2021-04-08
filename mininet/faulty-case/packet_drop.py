@@ -29,22 +29,21 @@ s1 = net.addDocker('s1', cls=DockerP4Router,
                          dimage="p4switch:v3",
                          json_path="/home/wcr/p4switch/basic_switch.json", 
                          pcap_dump="/tmp",
-                         controller="~/behavioral-model/tools/rt_mediator.py",
+                         controller="/home/wcr/behavioral-model/tools/rt_mediator.py",
                          ospfd='yes')
 s2 = net.addDocker('s2', cls=DockerP4Router, 
                          dimage="p4switch:v3", 
                          json_path="/home/wcr/p4switch/basic_switch.json", 
                          pcap_dump="/tmp",
-                         controller="~/behavioral-model/tools/rt_mediator.py",
+                         controller="/home/wcr/behavioral-model/tools/rt_mediator.py",
                          ospfd='yes')
-b1 = net.addSwitch('b1', cls=LinuxBridge)
-# b2 = net.addSwitch('b2', cls=LinuxBridge)
 
 info('*** Adding subnets\n')
 snet1 = Subnet(ipStr="10.0.0.0", prefixLen=24)
 snet2 = Subnet(ipStr="10.1.0.0", prefixLen=24)
 snet3 = Subnet(ipStr="10.2.0.0", prefixLen=24)
 snet4 = Subnet(ipStr="10.3.0.0", prefixLen=24)
+snet5 = Subnet(ipStr="10.4.0.0", prefixLen=24)
 
 info('*** Creating links\n')
 
@@ -63,24 +62,23 @@ ip2 = snet3.allocateIPAddr()
 net.addLink(s1, d2, ip1=ip1, ip2=ip2, addr1=snet3.ipToMac(ip1), addr2=snet3.ipToMac(ip2))
 snet3.addNode(s1)
 
-ip2 = snet4.assignIpAddr("10.3.0.1")
-net.addLink(b1, s2, ip2=ip2, addr2=snet4.ipToMac(ip2))
-snet4.addNode(s2)
-
+ip1 = snet4.allocateIPAddr()
 ip2 = snet4.allocateIPAddr()
-net.addLink(b1, d3, ip2=ip2, addr2=snet4.ipToMac(ip2))
-snet4.addNode(d3)
+net.addLink(s2, d3, ip1=ip1, ip2=ip2, addr1=snet4.ipToMac(ip1), addr2=snet4.ipToMac(ip2))
+snet4.addNode(s2, d3)
 
+ip1 = snet5.allocateIPAddr()
+ip2 = snet5.allocateIPAddr()
+net.addLink(s2, d4, ip1=ip1, ip2=ip2, addr1=snet4.ipToMac(ip1), addr2=snet4.ipToMac(ip2))
+snet5.addNode(s2, d4)
 
-ip2 = snet4.allocateIPAddr()
-net.addLink(b1, d4, ip2=ip2, addr2=snet4.ipToMac(ip2))
-snet4.addNode(d4)
 
 info('*** Configuring routes\n')
 snet1.installSubnetTable()
 snet2.installSubnetTable()
 snet3.installSubnetTable()
 snet4.installSubnetTable()
+snet5.installSubnetTable()
 
 s1.addRoutingConfig("ospfd", "router ospf")
 s1.addRoutingConfig("ospfd", "router-id 10.0.0.1")
@@ -94,13 +92,14 @@ s2.addRoutingConfig("ospfd", "router ospf")
 s2.addRoutingConfig("ospfd", "router-id 10.0.0.2")
 s2.addRoutingConfig("ospfd", "network " + snet1.getNetworkPrefix() + " area 0")
 s2.addRoutingConfig("ospfd", "network " + snet4.getNetworkPrefix() + " area 1")
+s2.addRoutingConfig("ospfd", "network " + snet5.getNetworkPrefix() + " area 2")
 s2.addRoutingConfig("ospfd", "log file tmp/quagga.log")
 s2.start()
 
 d1.setDefaultRoute("gw 10.1.0.1")
 d2.setDefaultRoute("gw 10.2.0.1")
 d3.setDefaultRoute("gw 10.3.0.1")
-d4.setDefaultRoute("gw 10.3.0.1")
+d4.setDefaultRoute("gw 10.4.0.1")
 
 info('*** Exp Setup\n')
 

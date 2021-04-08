@@ -872,65 +872,14 @@ class Docker ( Node ):
         return image.id, output_str
 
     def start(self):
-        # Containernet ignores the CMD field of the Dockerfile.
-        # Lets try to load it here and manually execute it once the
-        # container is started and configured by Containernet:
-        cmd_field = self.get_cmd_field(self.dimage)
-        entryp_field = self.get_entrypoint_field(self.dimage)
-        if entryp_field is not None:
-            if cmd_field is None:
-                cmd_field = list()
-            # clean up cmd_field
-            try:
-                cmd_field.remove(u'/bin/sh')
-                cmd_field.remove(u'-c')
-            except ValueError as ex:
-                pass
-            # we just add the entryp. commands to the beginning:
-            cmd_field = entryp_field + cmd_field
-        if cmd_field is not None:
-            cmd_field.append("> /dev/pts/0 2>&1")  # make output available to docker logs
-            cmd_field.append("&")  # put to background (works, but not nice)
-            info("{}: running CMD: {}\n".format(self.name, cmd_field))
-            self.cmd(" ".join(cmd_field))
+        # start ssh service
+        self.cmd("service ssh start")
 
-    def get_cmd_field(self, imagename):
-        """
-        Try to find the original CMD command of the Dockerfile
-        by inspecting the Docker image.
-        Returns list from CMD field if it is different from
-        a single /bin/bash command which Containernet executes
-        anyhow.
-        """
-        try:
-            imgd = self.dcli.inspect_image(imagename)
-            cmd = imgd.get("Config", {}).get("Cmd")
-            assert isinstance(cmd, list)
-            # filter the default case: a single "/bin/bash"
-            if "/bin/bash" in cmd and len(cmd) == 1:
-                return None
-            return cmd
-        except BaseException as ex:
-            error("Error during image inspection of {}:{}"
-                  .format(imagename, ex))
-        return None
-
-    def get_entrypoint_field(self, imagename):
-        """
-        Try to find the original ENTRYPOINT command of the Dockerfile
-        by inspecting the Docker image.
-        Returns list or None.
-        """
-        try:
-            imgd = self.dcli.inspect_image(imagename)
-            ep = imgd.get("Config", {}).get("Entrypoint")
-            if isinstance(ep, list) and len(ep) < 1:
-                return None
-            return ep
-        except BaseException as ex:
-            error("Error during image inspection of {}:{}"
-                  .format(imagename, ex))
-        return None
+        # disable NIC offloading for all features
+        for port, intf in self.intfs.items():
+            # disable all NIC offloading for features
+            self.cmd("ethtool --offload {} rx off".format(intf.name))
+            self.cmd("ethtool --offload {} tx off".format(intf.name))
 
     # Command support via shell process in namespace
     def startShell( self, *args, **kwargs ):
@@ -1344,7 +1293,7 @@ class DockerP4Router( DockerRouter ):
             for port, intf in self.intfs.items():
                 ip = intf.IP()
                 if subnet.extractPrefix(ip, prefixLen)+"/"+str(prefixLen) == subnet.getNetworkPrefix():
-                    file.write("table_add {} {} 0.0.0.0&&&0.0.0.0  {} => 0.0.0.1 {} {}\n".format(LpmName, LpmAction, subnet.getNetworkPrefix(), port, 1))
+                    file.write("table_add {} {} {} => 0.0.0.1 {} {}\n".format(LpmName, LpmAction, subnet.getNetworkPrefix(), port, 1))
                     break
 
     def installStartupTables(self, SMTName="SrcMac_RW", SMTAction="set_smac", DMTName="DstMac_RW", DMTAction="set_dmac", LpmName="Ipv4_FIB", LpmAction="ipv4_forward"):
@@ -1369,7 +1318,7 @@ class DockerP4Router( DockerRouter ):
             # prepare local data port entries for ipv4 LPM table
             for port, intf in self.intfs.items():
                 ip = intf.IP()
-                file.write("table_add {} {} 0.0.0.0&&&0.0.0.0  {}/32 => 0.0.0.0 {} {}\n".format(LpmName, LpmAction, ip, self.cpu_input_port, 1))
+                file.write("table_add {} {} {}/32 => 0.0.0.0 {} {}\n".format(LpmName, LpmAction, ip, self.cpu_input_port, 1))
         
         # copy the file into the tmp directory of docker container
         print(os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/Startup_cmds"))
@@ -1394,6 +1343,10 @@ class DockerP4Router( DockerRouter ):
         self.cmd("ifconfig cp-ingress up 127.0.1.2/24")
         self.cmd("iptables -t filter -A OUTPUT -p all -o dp-egress -j DROP")
         self.cmd("iptables -t filter -A OUTPUT -p all -o cp-ingress -j DROP")
+        self.cmd("ethtool --offload dp-egress rx off")
+        self.cmd("ethtool --offload dp-egress tx off")
+        self.cmd("ethtool --offload cp-ingress rx off")
+        self.cmd("ethtool --offload cp-ingress tx off")
 
         # create & start a veth pair for CPU(Control-plane) output port
         makeIntfPair("dp-ingress", "cp-egress", node1=self, node2=self, addr1="aa:00:00:00:00:03", addr2="aa:00:00:00:00:04")
@@ -1401,6 +1354,10 @@ class DockerP4Router( DockerRouter ):
         self.cmd("ifconfig cp-egress up 127.0.1.4/24")
         self.cmd("iptables -t filter -A INPUT -p all -i dp-ingress -j DROP")
         self.cmd("iptables -t filter -A INPUT -p all -i cp-egress -j DROP")
+        self.cmd("ethtool --offload dp-ingress rx off")
+        self.cmd("ethtool --offload dp-ingress tx off")
+        self.cmd("ethtool --offload cp-egress rx off")
+        self.cmd("ethtool --offload cp-egress tx off")
 
         # disable rp_filters
         self.cmd("sysctl net.ipv4.conf.all.rp_filter=0")
@@ -1428,6 +1385,7 @@ class DockerP4Router( DockerRouter ):
 
             # add iptables entries to mark output packets
             print(self.cmd("iptables -t mangle -A OUTPUT -p all -o {} -j MARK --set-mark 0x8".format(intf.name)))
+
         if self.pcap_dump:
             args.extend(["--pcap", self.pcap_dump])
         if self.thrift_port:
@@ -1452,14 +1410,16 @@ class DockerP4Router( DockerRouter ):
             os.system("docker cp " + self.controller + " " + self.dc['Id'] + ":/tmp/controller")
 
         # start programs
-        print(self.cmd(' '.join(args) + ' >/tmp/p4bm.log 2>&1 &')) # p4 bmv2
+        self.cmd(' '.join(args) + ' >/tmp/p4bm.log 2>&1 &') # p4 bmv2
+        time.sleep(1) # wait for starting switch
         if self.controller != None:
-            print(self.cmd("python3 /tmp/controller > /tmp/controller.log 2>&1 &")) # controller if exist
+            self.cmd("python3 /tmp/controller > /tmp/controller.log 2>&1 &") # controller if exist
 
         self.installStartupTables()
         # install initial table entries
         self.cmd("simple_switch_CLI < /tmp/Startup_cmds")
         self.cmd("simple_switch_CLI < /tmp/Subnet_cmds")
+        self.cmd("cd /tmp")
 
         super().start()
 
