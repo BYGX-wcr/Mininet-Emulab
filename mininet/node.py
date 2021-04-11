@@ -1293,7 +1293,7 @@ class DockerP4Router( DockerRouter ):
             for port, intf in self.intfs.items():
                 ip = intf.IP()
                 if subnet.extractPrefix(ip, prefixLen)+"/"+str(prefixLen) == subnet.getNetworkPrefix():
-                    file.write("table_add {} {} {} => 0.0.0.1 {} {}\n".format(LpmName, LpmAction, subnet.getNetworkPrefix(), port, 1))
+                    file.write("table_add {} {} {} => 0.0.0.1 {}\n".format(LpmName, LpmAction, subnet.getNetworkPrefix(), port))
                     break
 
     def installStartupTables(self, SMTName="SrcMac_RW", SMTAction="set_smac", DMTName="DstMac_RW", DMTAction="set_dmac", LpmName="Ipv4_FIB", LpmAction="ipv4_forward"):
@@ -1318,20 +1318,26 @@ class DockerP4Router( DockerRouter ):
             # prepare local data port entries for ipv4 LPM table
             for port, intf in self.intfs.items():
                 ip = intf.IP()
-                file.write("table_add {} {} {}/32 => 0.0.0.0 {} {}\n".format(LpmName, LpmAction, ip, self.cpu_input_port, 1))
+                file.write("table_add {} {} {}/32 => 0.0.0.0 {}\n".format(LpmName, LpmAction, ip, self.cpu_input_port))
         
         # copy the file into the tmp directory of docker container
         print(os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/Startup_cmds"))
 
         # remove the file
-        os.remove(filename)
+        try:
+            os.remove(filename)
+        except:
+            print("No Startup-{}.txt! ".format(self.name))
 
         # copy the subnet file into the tmp directory of docker container
         filename = "./Subnet-{}.txt".format(self.name)
         print(os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/Subnet_cmds"))
 
         # remove the subnet file
-        os.remove(filename)
+        try:
+            os.remove(filename)
+        except:
+            print("No Subnet-{}.txt! ".format(self.name))
 
     def start(self):
         """Start up a new P4 switch"""
