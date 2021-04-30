@@ -26,16 +26,16 @@ d4 = net.addDocker('d4', dimage="ubuntu:trusty_v1")
 info('*** Adding switches\n')
 
 s1 = net.addDocker('s1', cls=DockerP4Router, 
-                         dimage="p4switch:v3",
+                         dimage="p4switch:v6",
                          json_path="/home/wcr/p4switch/basic_switch.json", 
                          pcap_dump="/tmp",
-                         controller="/home/wcr/behavioral-model/tools/rt_mediator.py",
+                         controller="/home/wcr/p4switch/rt_mediator.py",
                          ospfd='yes')
 s2 = net.addDocker('s2', cls=DockerP4Router, 
                          dimage="p4switch:v3", 
                          json_path="/home/wcr/p4switch/basic_switch.json", 
                          pcap_dump="/tmp",
-                         controller="/home/wcr/behavioral-model/tools/rt_mediator.py",
+                         controller="/home/wcr/p4switch/rt_mediator.py",
                          ospfd='yes')
 
 info('*** Adding subnets\n')

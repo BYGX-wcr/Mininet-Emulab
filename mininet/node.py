@@ -866,6 +866,9 @@ class Docker ( Node ):
         self.master = None
         self.slave = None
 
+        # shutdown the control port connected to docker network
+        self.cmd("ifconfig eth0 down")
+
     def build(self, **kwargs):
         image, output = self.d_client.images.build(**kwargs)
         output_str = parse_build_output(output)
@@ -1207,6 +1210,8 @@ class DockerRouter( Docker ):
         }
 
     def start(self):
+        super().start()
+
         # set daemon configuration file
         self.configDaemons()
 
@@ -1256,9 +1261,10 @@ class DockerP4Router( DockerRouter ):
                  cpu_output_port = 81,
                  pcap_dump = None,
                  log_console = False,
+                 log_level = "trace",
                  verbose = False,
                  enable_debugger = False,
-                 controller = None,
+                 rt_mediator = None,
                  **kwargs):
         DockerRouter.__init__(self, name, **kwargs)
         assert(json_path)
@@ -1273,10 +1279,12 @@ class DockerP4Router( DockerRouter ):
         self.pcap_dump = pcap_dump
         self.enable_debugger = enable_debugger
         self.log_console = log_console
+        self.log_level = log_level
         self.nanomsg = "ipc:///tmp/bm-log.ipc"
-        self.controller = controller
+        self.rt_mediator = rt_mediator
         self.cpu_input_port = 80
         self.cpu_output_port = 81
+
 
     def installSubnetTable(self, macTable, subnet, DMTName="DstMac_RW", DMTAction="set_dmac", LpmName="Ipv4_FIB", LpmAction="ipv4_forward"):
         """
@@ -1321,7 +1329,7 @@ class DockerP4Router( DockerRouter ):
                 file.write("table_add {} {} {}/32 => 0.0.0.0 {}\n".format(LpmName, LpmAction, ip, self.cpu_input_port))
         
         # copy the file into the tmp directory of docker container
-        print(os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/Startup_cmds"))
+        os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/Startup_cmds")
 
         # remove the file
         try:
@@ -1331,7 +1339,7 @@ class DockerP4Router( DockerRouter ):
 
         # copy the subnet file into the tmp directory of docker container
         filename = "./Subnet-{}.txt".format(self.name)
-        print(os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/Subnet_cmds"))
+        os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/Subnet_cmds")
 
         # remove the subnet file
         try:
@@ -1341,7 +1349,7 @@ class DockerP4Router( DockerRouter ):
 
     def start(self):
         """Start up a new P4 switch"""
-        info("Starting P4 switch {}.\n".format(self.name))
+        super().start()
 
         # create & start a veth pair for CPU(Control-plane) input port
         makeIntfPair("dp-egress", "cp-ingress", node1=self, node2=self, addr1="aa:00:00:00:00:01", addr2="aa:00:00:00:00:02")     
@@ -1374,11 +1382,11 @@ class DockerP4Router( DockerRouter ):
         self.cmd("sysctl net.ipv4.ip_forward=0")
 
         # setup route table 1
-        print(self.cmd("ip route add default via 127.0.1.3 dev cp-egress table 1"))
+        self.cmd("ip route add default via 127.0.1.3 dev cp-egress table 1")
         # Configure Policy Routing
-        print(self.cmd("ip rule add fwmark 0x8 table 1"))
+        self.cmd("ip rule add fwmark 0x8 table 1")
         # setup arp entry for dp-ingress interface
-        print(self.cmd("arp -s -i cp-egress 127.0.1.3 aa:00:00:00:00:03"))
+        self.cmd("arp -s -i cp-egress 127.0.1.3 aa:00:00:00:00:03")
 
         # merge arguments
         args = [self.target_path]
@@ -1386,11 +1394,11 @@ class DockerP4Router( DockerRouter ):
             args.extend(['-i', str(port) + "@" + intf.name])
 
             # add iptables entries to block input packets
-            print(self.cmd("iptables -t filter -A INPUT -p ospf -i {} -j ACCEPT".format(intf.name))) # exclude OSPF packets
-            print(self.cmd("iptables -t filter -A INPUT -p all ! -d 224.0.0.0/4 -i {} -j DROP".format(intf.name))) # exclude multicast packets for reserved addresses
+            self.cmd("iptables -t filter -A INPUT -p ospf -i {} -j ACCEPT".format(intf.name)) # exclude OSPF packets
+            self.cmd("iptables -t filter -A INPUT -p all ! -d 224.0.0.0/4 -i {} -j DROP".format(intf.name)) # exclude multicast packets for reserved addresses
 
             # add iptables entries to mark output packets
-            print(self.cmd("iptables -t mangle -A OUTPUT -p all -o {} -j MARK --set-mark 0x8".format(intf.name)))
+            self.cmd("iptables -t mangle -A OUTPUT -p all -o {} -j MARK --set-mark 0x8".format(intf.name))
 
         if self.pcap_dump:
             args.extend(["--pcap", self.pcap_dump])
@@ -1402,6 +1410,7 @@ class DockerP4Router( DockerRouter ):
             args.append("--debugger")
         if self.log_console:
             args.append("--log-console")
+        args.extend(['--log-level', self.log_level])
         # bind data-plane ports
         args.extend(['-i', str(self.cpu_input_port) + '@' + "dp-egress"])
         args.extend(['-i', str(self.cpu_output_port) + '@' + "dp-ingress"])
@@ -1409,25 +1418,24 @@ class DockerP4Router( DockerRouter ):
         # import json file & merge arguments
         os.system("docker cp " + self.json_path + " " + self.dc['Id'] + ":/tmp/running.json")
         args.append("/tmp/running.json")
-        info("cmd: " + ' '.join(args) + "\n")
+        info("Starting P4 switch {} with cmd: ".format(self.name) + ' '.join(args) + "\n")
 
-        # import controller, rt_mediator if path is not null
-        if self.controller:
-            os.system("docker cp " + self.controller + " " + self.dc['Id'] + ":/tmp/controller")
+        # import rt_mediator if path is not null
+        if self.rt_mediator:
+            os.system("docker cp " + self.rt_mediator + " " + self.dc['Id'] + ":/tmp/rt_mediator")
+            os.system("docker cp /home/wcr/route-monitor " + self.dc['Id'] + ":/tmp/route-monitor")
 
         # start programs
         self.cmd(' '.join(args) + ' >/tmp/p4bm.log 2>&1 &') # p4 bmv2
         time.sleep(1) # wait for starting switch
-        if self.controller != None:
-            self.cmd("python3 /tmp/controller > /tmp/controller.log 2>&1 &") # controller if exist
+        if self.rt_mediator != None:
+            self.cmd("python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log &")
 
         self.installStartupTables()
         # install initial table entries
         self.cmd("simple_switch_CLI < /tmp/Startup_cmds")
         self.cmd("simple_switch_CLI < /tmp/Subnet_cmds")
         self.cmd("cd /tmp")
-
-        super().start()
 
 
 class CPULimitedHost( Host ):

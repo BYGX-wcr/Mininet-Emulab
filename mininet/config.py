@@ -131,6 +131,34 @@ class Subnet:
 
         return "%d.%d.%d.%d" % (nums[0], nums[1], nums[2], nums[3])
 
+class NodeList:
+    def __init__(self):
+        self.nodeDict = dict()
+
+    def addNode(self, name, ip, nodeType):
+        if name in self.nodeDict.keys():
+            return
+            
+        self.nodeDict[name] = [0, ip, nodeType]
+
+    def addLink(self, name1, name2):
+        port1 = self.nodeDict[name1][0]
+        self.nodeDict[name1].append("{}-{}".format(port1, name2))
+        self.nodeDict[name1][0] += 1
+
+        port2 = self.nodeDict[name2][0]
+        self.nodeDict[name2].append("{}-{}".format(port2, name1))
+        self.nodeDict[name2][0] += 1
+
+    def writeFile(self, filepath):
+        with open(filepath, "w") as file:
+            for node in self.nodeDict.keys():
+                file.write(node)
+                for item in self.nodeDict[node][1:]:
+                    file.write(" " + str(item))
+
+                file.write("\n")
+
 # used for test
 if __name__ == "__main__":
     snet = Subnet(ipStr="10.1.0.0", prefixLen=24)

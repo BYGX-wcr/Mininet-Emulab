@@ -10,90 +10,113 @@ from mininet.nodelib import LinuxBridge
 from mininet.cli import CLI
 from mininet.link import TCLink
 from mininet.log import info, setLogLevel
-from mininet.config import Subnet
+from mininet.config import Subnet, NodeList
 import os
 setLogLevel('info')
 
 net = Containernet(controller=Controller)
+lengthOfRing = 3
+nodes = NodeList()
 
 info('*** Adding docker containers\n')
 
-d1 = net.addDocker('d1', dimage="ubuntu:trusty_v2")
-d2 = net.addDocker('d2', dimage="ubuntu:trusty_v2")
-# d3 = net.addDocker('d3', dimage="ubuntu:trusty_v1")
-# d4 = net.addDocker('d4', dimage="ubuntu:trusty_v1")
+host_list = list()
+for i in range(0, lengthOfRing * 2):
+    new_host = net.addDocker('d{}'.format(i), dimage="ubuntu:trusty_v2")
+    host_list.append(new_host)
 
 info('*** Adding switches\n')
 
-s1 = net.addDocker('s1', cls=DockerP4Router, 
-                         dimage="p4switch:v5",
+switch_list = list()
+for i in range(0, lengthOfRing + 1):
+    new_switch = net.addDocker('s{}'.format(i), cls=DockerP4Router, 
+                         dimage="p4switch:v8",
                          json_path="/home/wcr/p4switch/basic_switch.json", 
                          pcap_dump="/tmp",
-                         controller="/home/wcr/behavioral-model/tools/rt_mediator.py",
+                         log_console=True,
+                         log_level="info",
+                         rt_mediator="/home/wcr/p4switch/rt_mediator.py",
                          ospfd='yes')
-# s2 = net.addDocker('s2', cls=DockerP4Router, 
-#                          dimage="p4switch:v3", 
-#                          json_path="/home/wcr/p4switch/basic_switch.json", 
-#                          pcap_dump="/tmp",
-#                          controller="~/behavioral-model/tools/rt_mediator.py",
-#                          ospfd='yes')
+    switch_list.append(new_switch)
+    new_switch.addRoutingConfig("ospfd", "router ospf")
 
 info('*** Adding subnets\n')
-snet1 = Subnet(ipStr="10.0.0.0", prefixLen=24)
-snet2 = Subnet(ipStr="10.1.0.0", prefixLen=24)
-snet3 = Subnet(ipStr="10.2.0.0", prefixLen=24)
-snet4 = Subnet(ipStr="10.3.0.0", prefixLen=24)
+snet_list = list()
+for i in range(0, 100):
+    new_snet = Subnet(ipStr="10.{}.0.0".format(i), prefixLen=24)
+    snet_list.append(new_snet)
 
-info('*** Creating links\n')
+info('*** Creating links & Configure routes\n')
 
-ip1 = snet2.assignIpAddr("10.1.0.1")
-ip2 = snet2.allocateIPAddr()
-net.addLink(s1, d1, ip1=ip1, ip2=ip2, addr1=snet2.ipToMac(ip1), addr2=snet2.ipToMac(ip2))
-snet2.addNode(s1)
+snet_counter = 0
 
-ip1 = snet3.assignIpAddr("10.2.0.1")
-ip2 = snet3.allocateIPAddr()
-net.addLink(s1, d2, ip1=ip1, ip2=ip2, addr1=snet3.ipToMac(ip1), addr2=snet3.ipToMac(ip2))
-snet3.addNode(s1)
+# configure switch-switch links
+for i in range(0, lengthOfRing):
+    right = (i + 1) % lengthOfRing
 
-ip1 = snet4.assignIpAddr("10.3.0.1")
-ip2 = snet4.allocateIPAddr()
-net.addLink(d1, d2, ip1=ip1, ip2=ip2, addr1=snet3.ipToMac(ip1), addr2=snet3.ipToMac(ip2))
+    ip1 = snet_list[snet_counter].allocateIPAddr()
+    ip2 = snet_list[snet_counter].allocateIPAddr()
+    net.addLink(switch_list[i], switch_list[right], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+    snet_list[snet_counter].addNode(switch_list[i], switch_list[right])
 
-info('*** Configuring routes\n')
-snet1.installSubnetTable()
-snet2.installSubnetTable()
-snet3.installSubnetTable()
-snet4.installSubnetTable()
+    switch_list[i].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(snet_counter))
+    switch_list[right].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(snet_counter))
+    # switch_list[right].addRoutingConfig("ospfd", "area {} default-cost 10".format(snet_counter))
 
-s1.addRoutingConfig("ospfd", "router ospf")
-s1.addRoutingConfig("ospfd", "router-id 10.0.0.1")
-s1.addRoutingConfig("ospfd", "network " + snet1.getNetworkPrefix() + " area 0")
-s1.addRoutingConfig("ospfd", "network " + snet2.getNetworkPrefix() + " area 1")
-s1.addRoutingConfig("ospfd", "network " + snet3.getNetworkPrefix() + " area 2")
-s1.addRoutingConfig("ospfd", "log file tmp/quagga.log")
-s1.start()
+    nodes.addNode(switch_list[i].name, ip=ip1, nodeType="switch")
+    nodes.addNode(switch_list[right].name, ip=ip2, nodeType="switch")
+    nodes.addLink(switch_list[i].name, switch_list[right].name)
 
-# s2.addRoutingConfig("ospfd", "router ospf")
-# s2.addRoutingConfig("ospfd", "router-id 10.0.0.2")
-# s2.addRoutingConfig("ospfd", "network " + snet1.getNetworkPrefix() + " area 0")
-# s2.addRoutingConfig("ospfd", "network " + snet4.getNetworkPrefix() + " area 1")
-# s2.addRoutingConfig("ospfd", "log file tmp/quagga.log")
-# s2.start()
+    snet_counter += 1
 
-d1.setDefaultRoute("gw 10.1.0.1")
-d2.setDefaultRoute("gw 10.2.0.1")
-# d3.setDefaultRoute("gw 10.3.0.1")
-# d4.setDefaultRoute("gw 10.3.0.1")
+    # ip1 = snet_list[snet_counter].allocateIPAddr()
+    # ip2 = snet_list[snet_counter].allocateIPAddr()
+    # net.addLink(switch_list[i], switch_list[lengthOfRing], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+    # snet_list[snet_counter].addNode(switch_list[i], switch_list[lengthOfRing])
+
+    # switch_list[i].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(snet_counter))
+    # switch_list[i].addRoutingConfig("ospfd", "area {} default-cost 20".format(snet_counter))
+    # switch_list[lengthOfRing].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(snet_counter))
+
+    # nodes.addNode(switch_list[lengthOfRing].name, ip=ip2, nodeType="switch")
+    # nodes.addLink(switch_list[i].name, switch_list[lengthOfRing].name)
+
+    # snet_counter += 1
+
+# configure host-switch links
+for i in range(0, lengthOfRing * 2):
+    sid = int(i / 2)
+
+    ip1 = snet_list[snet_counter].allocateIPAddr()
+    ip2 = snet_list[snet_counter].allocateIPAddr()
+    net.addLink(switch_list[sid], host_list[i], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+    snet_list[snet_counter].addNode(switch_list[sid])
+    switch_list[sid].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(snet_counter))
+
+    host_list[i].setDefaultRoute("gw {}".format(ip1.split("/")[0]))
+
+    nodes.addNode(host_list[i].name, ip=ip2, nodeType="host")
+    nodes.addLink(switch_list[sid].name, host_list[i].name)
+
+    snet_counter += 1
+
+for snet in snet_list:
+    snet.installSubnetTable()
 
 info('*** Exp Setup\n')
 
+nodes.writeFile("topo.txt")
 
 info('*** Starting network\n')
 
+for host in host_list:
+    host.start()
+
+for switch in switch_list:
+    switch.addRoutingConfig("ospfd", "log file /tmp/quagga.log")
+    switch.start()
+
 net.start()
-d1.start()
-d2.start()
 
 info('*** Running CLI\n')
 
