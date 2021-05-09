@@ -1423,7 +1423,6 @@ class DockerP4Router( DockerRouter ):
         # import rt_mediator if path is not null
         if self.rt_mediator:
             os.system("docker cp " + self.rt_mediator + " " + self.dc['Id'] + ":/tmp/rt_mediator")
-            os.system("docker cp /home/wcr/route-monitor " + self.dc['Id'] + ":/tmp/route-monitor")
 
         # start programs
         self.cmd(' '.join(args) + ' >/tmp/p4bm.log 2>&1 &') # p4 bmv2

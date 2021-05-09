@@ -139,7 +139,7 @@ class NodeList:
         if name in self.nodeDict.keys():
             return
             
-        self.nodeDict[name] = [0, ip, nodeType]
+        self.nodeDict[name] = [0, ip.split("/")[0], nodeType]
 
     def addLink(self, name1, name2):
         port1 = self.nodeDict[name1][0]

@@ -18,3 +18,4 @@ trunk
 .vagrant/
 .idea
 *.txt
+*.sh
