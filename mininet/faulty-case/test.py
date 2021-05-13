@@ -33,8 +33,8 @@ info('*** Adding switches\n')
 switch_list = list()
 for i in range(0, lengthOfRing + 1):
     new_switch = net.addDocker('s{}'.format(i), cls=DockerP4Router, 
-                         dimage="p4switch:test",
-                         json_path="/home/wcr/p4switch/basic_switch.json", 
+                         dimage="p4switch:v9",
+                         json_path="/home/wcr/p4switch/ecmp_switch.json", 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
@@ -65,9 +65,9 @@ for i in range(0, lengthOfRing):
     # config routing, every router prefer the path in clockwise direction
     switch_list[i].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
     switch_list[right].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
-    switch_list[right].addRoutingConfig("ospfd", "interface {}".format(link.intf2))
-    switch_list[right].addRoutingConfig("ospfd", "ip ospf cost 100")
-    switch_list[right].addRoutingConfig("ospfd", "router ospf")
+    # switch_list[right].addRoutingConfig("ospfd", "interface {}".format(link.intf2))
+    # switch_list[right].addRoutingConfig("ospfd", "ip ospf cost 100")
+    # switch_list[right].addRoutingConfig("ospfd", "router ospf")
 
     nodes.addNode(switch_list[i].name, ip=ip1, nodeType="switch")
     nodes.addNode(switch_list[right].name, ip=ip2, nodeType="switch")
@@ -83,12 +83,12 @@ for i in range(0, lengthOfRing):
     # config routing, every router prefer to neglect the paths via the central switch
     switch_list[i].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
     switch_list[lengthOfRing].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
-    switch_list[i].addRoutingConfig("ospfd", "interface {}".format(link.intf1))
-    switch_list[i].addRoutingConfig("ospfd", "ip ospf cost 200")
-    switch_list[i].addRoutingConfig("ospfd", "router ospf")
-    switch_list[lengthOfRing].addRoutingConfig("ospfd", "interface {}".format(link.intf2))
-    switch_list[lengthOfRing].addRoutingConfig("ospfd", "ip ospf cost 200")
-    switch_list[lengthOfRing].addRoutingConfig("ospfd", "router ospf")
+    # switch_list[i].addRoutingConfig("ospfd", "interface {}".format(link.intf1))
+    # switch_list[i].addRoutingConfig("ospfd", "ip ospf cost 200")
+    # switch_list[i].addRoutingConfig("ospfd", "router ospf")
+    # switch_list[lengthOfRing].addRoutingConfig("ospfd", "interface {}".format(link.intf2))
+    # switch_list[lengthOfRing].addRoutingConfig("ospfd", "ip ospf cost 200")
+    # switch_list[lengthOfRing].addRoutingConfig("ospfd", "router ospf")
 
     nodes.addNode(switch_list[lengthOfRing].name, ip=ip2, nodeType="switch")
     nodes.addLink(switch_list[i].name, switch_list[lengthOfRing].name)

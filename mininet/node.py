@@ -1349,8 +1349,6 @@ class DockerP4Router( DockerRouter ):
 
     def start(self):
         """Start up a new P4 switch"""
-        super().start()
-
         # create & start a veth pair for CPU(Control-plane) input port
         makeIntfPair("dp-egress", "cp-ingress", node1=self, node2=self, addr1="aa:00:00:00:00:01", addr2="aa:00:00:00:00:02")     
         self.cmd("ifconfig dp-egress up 127.0.1.1/24")
@@ -1424,17 +1422,23 @@ class DockerP4Router( DockerRouter ):
         if self.rt_mediator:
             os.system("docker cp " + self.rt_mediator + " " + self.dc['Id'] + ":/tmp/rt_mediator")
 
-        # start programs
+        # start bmv2
         self.cmd(' '.join(args) + ' >/tmp/p4bm.log 2>&1 &') # p4 bmv2
-        time.sleep(1) # wait for starting switch
-        if self.rt_mediator != None:
-            self.cmd("python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log &")
+        # time.sleep(1) # wait for starting switch
 
         self.installStartupTables()
         # install initial table entries
-        self.cmd("simple_switch_CLI < /tmp/Startup_cmds")
-        self.cmd("simple_switch_CLI < /tmp/Subnet_cmds")
-        self.cmd("cd /tmp")
+        check_point = "init"
+        while "RuntimeCmd" not in check_point:
+            print(check_point, flush=True)
+            check_point = self.cmd("simple_switch_CLI < /tmp/Startup_cmds")
+            check_point += self.cmd("simple_switch_CLI < /tmp/Subnet_cmds")
+
+        # start rt_mediator
+        if self.rt_mediator != None:
+            self.cmd("python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log &")
+
+        super().start()
 
 
 class CPULimitedHost( Host ):
