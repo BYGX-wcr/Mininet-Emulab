@@ -1428,11 +1428,11 @@ class DockerP4Router( DockerRouter ):
 
         self.installStartupTables()
         # install initial table entries
-        check_point = "init"
-        while "RuntimeCmd" not in check_point:
-            print(check_point, flush=True)
-            check_point = self.cmd("simple_switch_CLI < /tmp/Startup_cmds")
-            check_point += self.cmd("simple_switch_CLI < /tmp/Subnet_cmds")
+        check_point1 = "init"
+        check_point2 = "init"
+        while "RuntimeCmd" not in check_point1 or "RuntimeCmd" not in check_point2:
+            check_point1 = self.cmd("simple_switch_CLI < /tmp/Startup_cmds")
+            check_point2 = self.cmd("simple_switch_CLI < /tmp/Subnet_cmds")
 
         # start rt_mediator
         if self.rt_mediator != None:
