@@ -3,7 +3,6 @@
 This is a simple example to emulate a common network fault, random packet drops on some switch.
 """
 from mininet.net import Containernet
-import mininet.node
 from mininet.node import * #Controller, Docker, DockerRouter, DockerP4Router
 from mininet.nodelib import LinuxBridge
 from mininet.cli import CLI
@@ -133,7 +132,7 @@ info('*** Exp Setup\n')
 nodes.writeFile("topo.txt")
 os.system("docker cp /home/wcr/diagnosis-driver/driver.tar.bz mn.admin:/")
 os.system("docker cp /home/wcr/Mininet-Emulab/topo.txt mn.admin:/")
-os.system("docker cp /home/wcr/behavioral-model/tools/fault_injector.py mn.admin:/")
+os.system("docker cp /home/wcr/diagnosis-driver/config_example_mesh.txt mn.admin:/")
 
 info('*** Starting network\n')
 

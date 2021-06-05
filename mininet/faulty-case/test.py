@@ -135,6 +135,7 @@ nodes.writeFile("topo.txt")
 os.system("docker cp /home/wcr/diagnosis-driver/driver.tar.bz mn.admin:/")
 os.system("docker cp /home/wcr/Mininet-Emulab/topo.txt mn.admin:/")
 os.system("docker cp /home/wcr/behavioral-model/tools/fault_injector.py mn.admin:/")
+os.system("docker cp /home/wcr/diagnosis-driver/config_example_ring+.txt mn.admin:/")
 
 info('*** Starting network\n')
 
