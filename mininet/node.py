@@ -842,6 +842,7 @@ class Docker ( Node ):
             tty=True,  # allocate pseudo tty
             environment=self.environment,
             #network_disabled=True,  # docker stats breaks if we disable the default network
+            networking_config=self.dcli.create_networking_config({'bridge': self.dcli.create_endpoint_config()}),
             host_config=hc,
             ports=defaults['ports'],
             labels=['com.containernet'],
@@ -861,7 +862,7 @@ class Docker ( Node ):
         Host.__init__(self, name, **kwargs)
 
         # let's initially set our resource limits
-        self.update_resources(**self.resources)
+        # self.update_resources(**self.resources)
 
         self.master = None
         self.slave = None
@@ -1270,7 +1271,7 @@ class DockerP4Router( DockerRouter ):
         assert(json_path)
         # make sure that the provided JSON file exists
         if not os.path.isfile(json_path):
-            error("Invalid JSON file.\n")
+            error("Invalid JSON file: {}.\n".format(json_path))
             exit(1)
         self.json_path = json_path
         self.target_path = target_path
