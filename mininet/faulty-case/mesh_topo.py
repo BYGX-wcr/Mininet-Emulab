@@ -2,6 +2,10 @@
 """
 This is a simple example to emulate a common network fault, random packet drops on some switch.
 """
+import sys
+import random
+sys.path.append('/m/local2/wcr/Mininet-Emulab')
+
 from mininet.net import Containernet
 from mininet.node import * #Controller, Docker, DockerRouter, DockerP4Router
 from mininet.nodelib import LinuxBridge
@@ -29,14 +33,17 @@ host_list.append(admin_host)
 info('*** Adding switches\n')
 
 switch_list = list()
+
+hackedSid = random.randint(3, pow(lengthOfDim, 2) - 1)
+print("Switch {} is hacked!!!".format(hackedSid))
 for i in range(0, pow(lengthOfDim, 2)):
     new_switch = net.addDocker('s{}'.format(i), cls=DockerP4Router, 
                          dimage="p4switch:v9",
-                         json_path="/home/wcr/p4switch/ecmp_switch.json", 
+                         json_path="/m/local2/wcr/P4-Switches/ecmp_switch.json", 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
-                         rt_mediator="/home/wcr/p4switch/rt_mediator.py",
+                         rt_mediator= "/m/local2/wcr/P4-Switches/rt_mediator.py" if i != hackedSid else "/m/local2/wcr/P4-Switches/rt_mediator_hacked.py",
                          ospfd='yes')
     switch_list.append(new_switch)
     new_switch.addRoutingConfig("ospfd", "router ospf")
@@ -130,9 +137,9 @@ for snet in snet_list:
 info('*** Exp Setup\n')
 
 nodes.writeFile("topo.txt")
-os.system("docker cp /home/wcr/diagnosis-driver/driver.tar.bz mn.admin:/")
-os.system("docker cp /home/wcr/Mininet-Emulab/topo.txt mn.admin:/")
-os.system("docker cp /home/wcr/diagnosis-driver/config_example_mesh.txt mn.admin:/")
+os.system("docker cp /m/local2/wcr/Diagnosis-driver/driver.tar.bz mn.admin:/")
+os.system("docker cp /m/local2/wcr/Mininet-Emulab/topo.txt mn.admin:/")
+os.system("docker cp /m/local2/wcr/Diagnosis-driver/example_mesh.config mn.admin:/")
 
 info('*** Starting network\n')
 
