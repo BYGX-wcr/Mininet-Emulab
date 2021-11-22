@@ -1191,23 +1191,30 @@ class DockerRouter( Docker ):
     """
     Node that represents a router running in an indepedent container
     """
-    def __init__(self, name, **kwargs):
+    def __init__(self, name, software="quagga", **kwargs):
         Docker.__init__(self, name, **kwargs)
 
-        self.daemonsOptions = { 
+        self.software = software
+        self.daemonsOptions = {
+            "zebra" : "yes",
             "bgpd" : "no",
             "ospfd" : "no",
             "ospf6d" : "no",
             "ripd" : "no",
-            "ripngd" : "no"
+            "ripngd" : "no",
+            "isisd" : "no",
+            "bfdd" : "no"
         }
         self.daemonsOptions.update(kwargs)
-        self.routingOptions = {
+        self.daemonConfigs = {
+            "zebra" : [], 
             "bgpd" : [],
             "ospfd" : [],
             "ospf6d" : [],
             "ripd" : [],
-            "ripngd" : []
+            "ripngd" : [],
+            "isisd" : [],
+            "bfdd" : []
         }
 
     def start(self):
@@ -1217,38 +1224,61 @@ class DockerRouter( Docker ):
         self.configDaemons()
 
         # if any routing daemon is enabled, write the corresponding config file
-        for protocol in self.routingOptions.keys():
+        for protocol in self.daemonConfigs.keys():
             if self.daemonsOptions[protocol] == "yes":
-                self.routingConfig(protocol)
+                self.setupRoutingConfigByProtocol(protocol)
 
         # start quagga
-        info("Start Quagga Daemons\n")
+        info("Start {} Daemons\n".format(self.software))
         self.cmd("route del default")
-        self.cmd("/etc/init.d/quagga start")
+        self.cmd("/etc/init.d/{} start".format(self.software))
 
     def configDaemons(self):
-        configStr = "zebra=yes\\n"
+        configStr = ""
+        configStr += "zebra=" + self.daemonsOptions["zebra"] + "\\n"
         configStr += "bgpd=" + self.daemonsOptions["bgpd"] + "\\n"
         configStr += "ospfd=" + self.daemonsOptions["ospfd"] + "\\n"
         configStr += "ospf6d=" + self.daemonsOptions["ospf6d"] + "\\n"
         configStr += "ripd=" + self.daemonsOptions["ripd"] + "\\n"
-        configStr += "ripngd=" + self.daemonsOptions["ripngd"]
+        configStr += "ripngd=" + self.daemonsOptions["ripngd"] + "\\n"
+        configStr += "isisd=" + self.daemonsOptions["isisd"] + "\\n"
+        configStr += "bfdd=" + self.daemonsOptions["bfdd"] + "\\n"
+        configStr += "zebra_options=\\\"-f /etc/frr/zebra.conf\\\"\\n"
+        configStr += "bgpd_options=\\\"-f /etc/frr/bgpd.conf\\\"\\n"
+        configStr += "ospfd_options=\\\"-f /etc/frr/ospfd.conf\\\"\\n"
+        configStr += "ospf6d_options=\\\"-f /etc/frr/ospf6d.conf\\\"\\n"
+        configStr += "ripd_options=\\\"-f /etc/frr/ripd.conf\\\"\\n"
+        configStr += "ripngd_options=\\\"-f /etc/frr/ripngd.conf\\\"\\n"
+        configStr += "isisd_options=\\\"-f /etc/frr/isisd.conf\\\"\\n"
+        configStr += "bfdd_options=\\\"-f /etc/frr/bfdd.conf\\\"\\n"
 
-        self.cmd("echo -e \"{}\" > /etc/quagga/daemons".format(configStr))
-        print("Configure daemons following %s" % (configStr))
+        self.cmd("echo -e \"{config}\" > /etc/{software}/daemons".format(config=configStr, software=self.software))
+        print("Configure daemons following {}".format(configStr))
 
-    def routingConfig(self, protocol):
+    def setupRoutingConfigIntegratedly(self):
+        configStr = "hostname {}\\n".format(self.name) + "password zebra\\n" + "enable password zebra\\n\\n"
+
+        for protocol, options in self.daemonConfigs:
+            for i in options:
+                configStr += i + "\\n"
+
+            configStr += "\\n"
+
+        self.cmd("echo -e \"{}\" > /etc/{}/{}.conf".format(configStr, self.software, self.software))
+        print("Configure protocols integratedly following {}".format(configStr))
+
+    def setupRoutingConfigByProtocol(self, protocol):
         configStr = "hostname {}\\n".format(self.name) + "password zebra\\n" + "enable password zebra\\n"
 
         # append every optional configuration command
-        for i in self.routingOptions[protocol]:
+        for i in self.daemonConfigs[protocol]:
             configStr += i + "\\n"
 
-        self.cmd("echo -e \"{}\" > /etc/quagga/{}.conf".format(configStr, protocol))
-        print("Configure %s following %s" % (protocol, configStr))
+        self.cmd("echo -e \"{}\" > /etc/{}/{}.conf".format(configStr, self.software, protocol))
+        print("Configure protocol {} following {}".format(protocol, configStr))
 
     def addRoutingConfig(self, protocol, configStr):
-        self.routingOptions[protocol].append(configStr)
+        self.daemonConfigs[protocol].append(configStr)
 
 class DockerP4Router( DockerRouter ):
     """
@@ -1283,8 +1313,8 @@ class DockerP4Router( DockerRouter ):
         self.log_level = log_level
         self.nanomsg = "ipc:///tmp/bm-log.ipc"
         self.rt_mediator = rt_mediator
-        self.cpu_input_port = 80
-        self.cpu_output_port = 81
+        self.cpu_input_port = cpu_input_port
+        self.cpu_output_port = cpu_output_port
 
 
     def installSubnetTable(self, macTable, subnet, DMTName="DstMac_RW", DMTAction="set_dmac", LpmName="Ipv4_FIB", LpmAction="ipv4_forward"):
