@@ -1256,7 +1256,7 @@ class DockerRouter( Docker ):
         print("Configure daemons following {}".format(configStr))
 
     def setupRoutingConfigIntegratedly(self):
-        configStr = "hostname {}\\n".format(self.name) + "password zebra\\n" + "enable password zebra\\n\\n"
+        configStr = "hostname {}\\n".format(self.name) + "password zebra\\n\\n"
 
         for protocol, options in self.daemonConfigs:
             for i in options:
@@ -1268,8 +1268,8 @@ class DockerRouter( Docker ):
         print("Configure protocols integratedly following {}".format(configStr))
 
     def setupRoutingConfigByProtocol(self, protocol):
-        configStr = "hostname {}\\n".format(self.name) + "password zebra\\n" + "enable password zebra\\n"
-
+        configStr = "hostname {}\\n".format(self.name) + "password zebra\\n"
+        
         # append every optional configuration command
         for i in self.daemonConfigs[protocol]:
             configStr += i + "\\n"
