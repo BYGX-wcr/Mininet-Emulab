@@ -33,9 +33,6 @@ host_list.append(admin_host)
 info('*** Adding switches\n')
 
 switch_list = list()
-
-hackedSid = random.randint(3, pow(lengthOfDim, 2) - 1)
-print("Switch {} is hacked!!!".format(hackedSid))
 for i in range(0, pow(lengthOfDim, 2)):
     new_switch = net.addDocker('s{}'.format(i), cls=DockerP4Router, 
                          dimage="p4switch:v9",
@@ -43,7 +40,7 @@ for i in range(0, pow(lengthOfDim, 2)):
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
-                         rt_mediator= "/m/local2/wcr/P4-Switches/rt_mediator.py" if i != hackedSid else "/m/local2/wcr/P4-Switches/rt_mediator_hacked.py",
+                         rt_mediator= "/m/local2/wcr/P4-Switches/rt_mediator.py",
                          ospfd='yes')
     switch_list.append(new_switch)
     new_switch.addRoutingConfig("ospfd", "router ospf")

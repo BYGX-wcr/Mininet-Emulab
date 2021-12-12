@@ -58,7 +58,6 @@ s2.addRoutingConfig("ospfd", "network " + snet1.getNetworkPrefix() + " area 0")
 s2.addRoutingConfig("ospfd", "network " + snet4.getNetworkPrefix() + " area 1")
 s2.addRoutingConfig("ospfd", "log file tmp/quagga.log")
 s2.start()
-s2.cmd("tcpdump -i s2-eth0 -w /wcr.pcap &")
 
 d1.setDefaultRoute("gw 10.1.0.1")
 d2.setDefaultRoute("gw 10.2.0.1")
