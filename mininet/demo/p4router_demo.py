@@ -1,10 +1,9 @@
 #!/usr/bin/python3
-"""
-This is a simple example to emulate a common network fault, random packet drops on some switch.
-"""
+import sys
+
+sys.path.append('/m/local2/wcr/Mininet-Emulab')
 from mininet.net import Containernet
 import mininet.node
-print(mininet.node.__file__)
 from mininet.node import * #Controller, Docker, DockerRouter, DockerP4Router
 from mininet.nodelib import LinuxBridge
 from mininet.cli import CLI
@@ -18,24 +17,24 @@ net = Containernet(controller=Controller)
 
 info('*** Adding docker containers\n')
 
-d1 = net.addDocker('d1', dimage="ubuntu:trusty_v1")
-d2 = net.addDocker('d2', dimage="ubuntu:trusty_v1")
-d3 = net.addDocker('d3', dimage="ubuntu:trusty_v1")
-d4 = net.addDocker('d4', dimage="ubuntu:trusty_v1")
+d1 = net.addDocker('d1', dimage="ubuntu:trusty_v2")
+d2 = net.addDocker('d2', dimage="ubuntu:trusty_v2")
+d3 = net.addDocker('d3', dimage="ubuntu:trusty_v2")
+d4 = net.addDocker('d4', dimage="ubuntu:trusty_v2")
 
 info('*** Adding switches\n')
 
 s1 = net.addDocker('s1', cls=DockerP4Router, 
-                         dimage="p4switch:v6",
-                         json_path="/home/wcr/p4switch/basic_switch.json", 
+                         dimage="p4switch:v9",
+                         json_path="/m/local2/wcr/P4-Switches/ecmp_switch.json", 
                          pcap_dump="/tmp",
-                         controller="/home/wcr/p4switch/rt_mediator.py",
+                         controller="/m/local2/wcr/P4-Switches/rt_mediator.py",
                          ospfd='yes')
 s2 = net.addDocker('s2', cls=DockerP4Router, 
-                         dimage="p4switch:v3", 
-                         json_path="/home/wcr/p4switch/basic_switch.json", 
+                         dimage="p4switch:v9", 
+                         json_path="/m/local2/wcr/P4-Switches/ecmp_switch.json", 
                          pcap_dump="/tmp",
-                         controller="/home/wcr/p4switch/rt_mediator.py",
+                         controller="/m/local2/wcr/P4-Switches/rt_mediator.py",
                          ospfd='yes')
 
 info('*** Adding subnets\n')
