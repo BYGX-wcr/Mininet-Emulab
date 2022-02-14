@@ -1216,12 +1216,20 @@ class DockerRouter( Docker ):
             "isisd" : [],
             "bfdd" : []
         }
+        self.generalConfig = [] # general configurations, not specific to any particular daemon
+
+        # configure the loopback interface with a unique IP address
+        self.loopbackIP = "192.168.19.{}".format(int(self.name[1:]) + 1)
+        self.cmd("ifconfig lo {} netmask 255.255.255.255 up".format(self.loopbackIP))
 
     def start(self):
         super().start()
 
         # set daemon configuration file
         self.configDaemons()
+
+        # set the general configuration
+        self.setupGeneralConfig()
 
         # if any routing daemon is enabled, write the corresponding config file
         for protocol in self.daemonConfigs.keys():
@@ -1243,20 +1251,23 @@ class DockerRouter( Docker ):
         configStr += "ripngd=" + self.daemonsOptions["ripngd"] + "\\n"
         configStr += "isisd=" + self.daemonsOptions["isisd"] + "\\n"
         configStr += "bfdd=" + self.daemonsOptions["bfdd"] + "\\n"
-        configStr += "zebra_options=\\\"-f /etc/frr/zebra.conf\\\"\\n"
-        configStr += "bgpd_options=\\\"-f /etc/frr/bgpd.conf\\\"\\n"
-        configStr += "ospfd_options=\\\"-f /etc/frr/ospfd.conf\\\"\\n"
-        configStr += "ospf6d_options=\\\"-f /etc/frr/ospf6d.conf\\\"\\n"
-        configStr += "ripd_options=\\\"-f /etc/frr/ripd.conf\\\"\\n"
-        configStr += "ripngd_options=\\\"-f /etc/frr/ripngd.conf\\\"\\n"
-        configStr += "isisd_options=\\\"-f /etc/frr/isisd.conf\\\"\\n"
-        configStr += "bfdd_options=\\\"-f /etc/frr/bfdd.conf\\\"\\n"
+        configStr += "zebra_options=\\\"-f /etc/{software}/zebra.conf\\\"\\n".format(software=self.software)
+        configStr += "bgpd_options=\\\"-f /etc/{software}/bgpd.conf\\\"\\n".format(software=self.software)
+        configStr += "ospfd_options=\\\"-f /etc/{software}/ospfd.conf\\\"\\n".format(software=self.software)
+        configStr += "ospf6d_options=\\\"-f /etc/{software}/ospf6d.conf\\\"\\n".format(software=self.software)
+        configStr += "ripd_options=\\\"-f /etc/{software}/ripd.conf\\\"\\n".format(software=self.software)
+        configStr += "ripngd_options=\\\"-f /etc/{software}/ripngd.conf\\\"\\n".format(software=self.software)
+        configStr += "isisd_options=\\\"-f /etc/{software}/isisd.conf\\\"\\n".format(software=self.software)
+        configStr += "bfdd_options=\\\"-f /etc/{software}/bfdd.conf\\\"\\n".format(software=self.software)
 
         self.cmd("echo -e \"{config}\" > /etc/{software}/daemons".format(config=configStr, software=self.software))
         print("Configure daemons following {}".format(configStr))
 
     def setupRoutingConfigIntegratedly(self):
         configStr = "hostname {}\\n".format(self.name) + "password zebra\\n\\n"
+
+        for line in self.generalConfig:
+            configStr += line + "\\n"
 
         for protocol, options in self.daemonConfigs:
             for i in options:
@@ -1267,8 +1278,18 @@ class DockerRouter( Docker ):
         self.cmd("echo -e \"{}\" > /etc/{}/{}.conf".format(configStr, self.software, self.software))
         print("Configure protocols integratedly following {}".format(configStr))
 
+    def setupGeneralConfig(self):
+        """ Only used with setupRoutingConfigByProtocol because the integrated configuration file will always incorporate these general configurations """
+        configStr = "hostname {}\\n".format(self.name) + "password zebra\\n\\n"
+
+        for line in self.generalConfig:
+            configStr += line + "\\n"
+
+        self.cmd("echo -e \"{}\" > /etc/{}/{}.conf".format(configStr, self.software, self.software))
+        print("Setup the general configurations of routing software {}".format(configStr))
+
     def setupRoutingConfigByProtocol(self, protocol):
-        configStr = "hostname {}\\n".format(self.name) + "password zebra\\n"
+        configStr = ""
         
         # append every optional configuration command
         for i in self.daemonConfigs[protocol]:
@@ -1277,8 +1298,14 @@ class DockerRouter( Docker ):
         self.cmd("echo -e \"{}\" > /etc/{}/{}.conf".format(configStr, self.software, protocol))
         print("Configure protocol {} following {}".format(protocol, configStr))
 
-    def addRoutingConfig(self, protocol, configStr):
-        self.daemonConfigs[protocol].append(configStr)
+    def addRoutingConfig(self, protocol = None, configStr = ""):
+        if protocol != None and configStr != "":
+            self.daemonConfigs[protocol].append(configStr)
+        else:
+            self.generalConfig.append(configStr)
+
+    def getLoopbackIP(self) -> str:
+        return self.loopbackIP
 
 class DockerP4Router( DockerRouter ):
     """
@@ -1296,6 +1323,7 @@ class DockerP4Router( DockerRouter ):
                  verbose = False,
                  enable_debugger = False,
                  rt_mediator = None,
+                 switch_agent = None,
                  **kwargs):
         DockerRouter.__init__(self, name, **kwargs)
         assert(json_path)
@@ -1313,9 +1341,13 @@ class DockerP4Router( DockerRouter ):
         self.log_level = log_level
         self.nanomsg = "ipc:///tmp/bm-log.ipc"
         self.rt_mediator = rt_mediator
+        self.switch_agent = switch_agent
         self.cpu_input_port = cpu_input_port
         self.cpu_output_port = cpu_output_port
 
+    def setAdminConfig(self, adminIP, faultReportCollectionPort):
+        self.adminIP = adminIP
+        self.faultReportCollectionPort = faultReportCollectionPort
 
     def installSubnetTable(self, macTable, subnet, DMTName="DstMac_RW", DMTAction="set_dmac", LpmName="Ipv4_FIB", LpmAction="ipv4_forward"):
         """
@@ -1358,6 +1390,11 @@ class DockerP4Router( DockerRouter ):
             for port, intf in self.intfs.items():
                 ip = intf.IP()
                 file.write("table_add {} {} {}/32 => 0.0.0.0 {}\n".format(LpmName, LpmAction, ip, self.cpu_input_port))
+            # prepare local loopback interface entry
+            file.write("table_add {} {} {}/32 => 0.0.0.0 {}\n".format(LpmName, LpmAction, self.loopbackIP, self.cpu_input_port))
+
+            # configure mirroring_session for potential usage
+            file.write("mirroring_add 819 80\n")
         
         # copy the file into the tmp directory of docker container
         os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/Startup_cmds")
@@ -1453,6 +1490,10 @@ class DockerP4Router( DockerRouter ):
         if self.rt_mediator:
             os.system("docker cp " + self.rt_mediator + " " + self.dc['Id'] + ":/tmp/rt_mediator")
 
+        # import switch_agent if path is not null
+        if self.switch_agent:
+            os.system("docker cp " + self.switch_agent + " " + self.dc['Id'] + ":/tmp/switch_agent")
+
         # start bmv2
         self.cmd(' '.join(args) + ' >/tmp/p4bm.log 2>&1 &') # p4 bmv2
         # time.sleep(1) # wait for starting switch
@@ -1468,6 +1509,10 @@ class DockerP4Router( DockerRouter ):
         # start rt_mediator
         if self.rt_mediator != None:
             self.cmd("python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log &")
+
+        # start switch_agent
+        if self.switch_agent != None:
+            self.cmd("python3 /tmp/switch_agent --log-file /tmp/switch_agent.log --report-server-ip {} --report-server-port {} &".format(self.adminIP, self.faultReportCollectionPort))
 
         super().start()
 

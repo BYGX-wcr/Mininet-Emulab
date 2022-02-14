@@ -16,6 +16,8 @@ net = Containernet(controller=Controller)
 numOfAS = 3
 sizeOfAS = 3
 nodes = NodeList() # used for generating topology file
+adminIP = ""
+faultReportCollectionPort = 9024
 
 info('*** Adding docker containers\n')
 
@@ -24,7 +26,7 @@ for i in range(0, numOfAS * (sizeOfAS - 1)):
     new_host = net.addDocker('d{}'.format(i), dimage="ubuntu:trusty_v2")
     host_list.append(new_host)
 
-admin_host = net.addDocker('admin', dimage="p4switch-frr:v2")
+admin_host = net.addDocker('admin', dimage="p4switch-frr:v4")
 host_list.append(admin_host)
 
 info('*** Adding switches\n')
@@ -32,20 +34,31 @@ info('*** Adding switches\n')
 switch_list = list()
 for i in range(0, numOfAS * sizeOfAS):
     new_switch = net.addDocker('s{}'.format(i), cls=DockerP4Router, 
-                         dimage="p4switch-frr:v2",
+                         dimage="p4switch-frr:v4",
                          software="frr",
-                         json_path="/m/local2/wcr/P4-Switches/ecmp_switch.json", 
+                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v0.json", 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
                          rt_mediator= "/m/local2/wcr/P4-Switches/rt_mediator.py",
+                         switch_agent= "/m/local2/wcr/P4-Switches/switch_agent.py",
                          bgpd='yes',
                          ospfd='yes',
-                         bfd='yes')
+                         bfdd='no')
     switch_list.append(new_switch)
+    new_switch.addRoutingConfig(configStr="log file /tmp/frr.log debugging")
+    new_switch.addRoutingConfig(configStr="debug bgp neighbor-events")
+    new_switch.addRoutingConfig(configStr="debug bgp bfd")
+    new_switch.addRoutingConfig(configStr="debug bgp nht")
+    new_switch.addRoutingConfig(configStr="debug bfd network")
+    new_switch.addRoutingConfig(configStr="debug bfd peer")
+    new_switch.addRoutingConfig(configStr="debug bfd zebra")
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=int(i / sizeOfAS + 1)))
+    new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
     new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
     new_switch.addRoutingConfig("ospfd", "router ospf")
+    new_switch.addRoutingConfig("ospfd", "ospf router-id " + new_switch.getLoopbackIP())
+    new_switch.addRoutingConfig("bfdd", "bfd")
 
 info('*** Adding subnets\n')
 snet_list = list()
@@ -75,11 +88,21 @@ for i in range(0, numOfAS):
             nodes.addNode(switch_list[index2].name, ip=ip2, nodeType="switch")
             nodes.addLink(switch_list[index1].name, switch_list[index2].name)
 
-            # configure eBGP peers
+            # configure eBGP peers with BFD enabled
+            # --- switch1
             switch_list[index1].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(ip2.split("/")[0], j + 1))
             switch_list[index1].addRoutingConfig("bgpd", "neighbor {} bfd".format(ip2.split("/")[0]))
+            switch_list[index1].addRoutingConfig("bfdd", "peer {}".format(ip2.split("/")[0]))
+            switch_list[index1].addRoutingConfig("bfdd", "no shutdown")
+            switch_list[index1].addRoutingConfig("bfdd", "receive-interval 100")
+            switch_list[index1].addRoutingConfig("bfdd", "transmit-interval 100")
+            # --- switch2
             switch_list[index2].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(ip1.split("/")[0], i + 1))
             switch_list[index2].addRoutingConfig("bgpd", "neighbor {} bfd".format(ip1.split("/")[0]))
+            switch_list[index2].addRoutingConfig("bfdd", "peer {}".format(ip1.split("/")[0]))
+            switch_list[index2].addRoutingConfig("bfdd", "no shutdown")
+            switch_list[index2].addRoutingConfig("bfdd", "receive-interval 100")
+            switch_list[index2].addRoutingConfig("bfdd", "transmit-interval 100")
 
             # add new advertised network prefix
             switch_list[index1].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
@@ -106,16 +129,33 @@ for i in range(0, numOfAS):
 
         # config IGP routing, using OSPF
         switch_list[index1].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
+        switch_list[index1].addRoutingConfig("ospfd", "network " + switch_list[index1].getLoopbackIP() + "/32" + " area {}".format(0))
         switch_list[index2].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
 
-        # select edge router ip
+        # get the edge router's loopback ip
         if index1 == edgeRouter:
-            edgeRouterIp = ip1
+            edgeRouterIp = switch_list[index1].getLoopbackIP()
 
         # config iBGP peers
         if index1 != edgeRouter:
-            switch_list[edgeRouter].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(ip1.split("/")[0], i + 1))
-            switch_list[index1].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(edgeRouterIp.split("/")[0], i + 1))
+            loopbackIP1 = switch_list[index1].getLoopbackIP()
+            # --- edge/border router
+            switch_list[edgeRouter].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(loopbackIP1, i + 1))
+            switch_list[edgeRouter].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(loopbackIP1, edgeRouterIp))
+            switch_list[edgeRouter].addRoutingConfig("bgpd", "neighbor {} bfd".format(loopbackIP1))
+            switch_list[edgeRouter].addRoutingConfig("bfdd", "peer {} multihop local-address {}".format(loopbackIP1, edgeRouterIp))
+            switch_list[edgeRouter].addRoutingConfig("bfdd", "no shutdown")
+            switch_list[edgeRouter].addRoutingConfig("bfdd", "receive-interval 100")
+            switch_list[edgeRouter].addRoutingConfig("bfdd", "transmit-interval 100")
+
+            # --- non-edge router
+            switch_list[index1].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(edgeRouterIp, i + 1))
+            switch_list[index1].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(edgeRouterIp, loopbackIP1))
+            switch_list[index1].addRoutingConfig("bgpd", "neighbor {} bfd".format(edgeRouterIp))
+            switch_list[index1].addRoutingConfig("bfdd", "peer {} multihop local-address {}".format(edgeRouterIp, loopbackIP1))
+            switch_list[index1].addRoutingConfig("bfdd", "no shutdown")
+            switch_list[index1].addRoutingConfig("bfdd", "receive-interval 100")
+            switch_list[index1].addRoutingConfig("bfdd", "transmit-interval 100")
 
         # add new bgp advertised network prefix
         bgp_network_list.append(snet_list[snet_counter].getNetworkPrefix())
@@ -166,6 +206,7 @@ nodes.addNode(admin_host.name, ip=ip2, nodeType="host")
 nodes.addLink(switch_list[0].name, admin_host.name)
 switch_list[0].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 snet_counter += 1
+adminIP = ip2.split("/")[0]
 
 for snet in snet_list:
     snet.installSubnetTable()
@@ -183,9 +224,7 @@ for host in host_list:
     host.start()
 
 for switch in switch_list:
-    switch.addRoutingConfig("zebra","log file /tmp/zebra.log")
-    switch.addRoutingConfig("ospfd", "log file /tmp/ospfd.log")
-    switch.addRoutingConfig("bgpd", "log file /tmp/bgpd.log")
+    switch.setAdminConfig(adminIP, faultReportCollectionPort)
     switch.start()
 
 net.start()
