@@ -1512,7 +1512,7 @@ class DockerP4Router( DockerRouter ):
 
         # start switch_agent
         if self.switch_agent != None:
-            self.cmd("python3 /tmp/switch_agent --log-file /tmp/switch_agent.log --report-server-ip {} --report-server-port {} &".format(self.adminIP, self.faultReportCollectionPort))
+            self.cmd("python3 /tmp/switch_agent --log-file /tmp/switch_agent.log --report-server-ip {} --report-server-port {} --port-num {} &".format(self.adminIP, self.faultReportCollectionPort, len(self.intfs.keys())))
 
         super().start()
 

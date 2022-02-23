@@ -28,7 +28,7 @@ for i in range(0, numOfAS * (sizeOfAS - 1)):
     new_host = net.addDocker('d{}'.format(i), dimage="ubuntu:trusty_v2")
     host_list.append(new_host)
 
-admin_host = net.addDocker('admin', dimage="p4switch-frr:v2")
+admin_host = net.addDocker('admin', dimage="p4switch-frr:v4")
 host_list.append(admin_host)
 
 info('*** Adding switches\n')
@@ -36,7 +36,7 @@ info('*** Adding switches\n')
 switch_list = list()
 for i in range(0, numOfAS * sizeOfAS):
     new_switch = net.addDocker('s{}'.format(i), cls=DockerP4Router, 
-                         dimage="p4switch-frr:v2",
+                         dimage="p4switch-frr:v4",
                          software="frr",
                          json_path="/m/local2/wcr/P4-Switches/ecmp_switch.json", 
                          pcap_dump="/tmp",

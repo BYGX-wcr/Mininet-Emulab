@@ -93,6 +93,7 @@ for i in range(0, numOfAS):
             switch_list[index1].addRoutingConfig("bgpd", "neighbor {} bfd".format(ip2.split("/")[0]))
             switch_list[index1].addRoutingConfig("bgpd", "neighbor {} route-map rmap_out out".format(ip2.split("/")[0]))
             switch_list[index1].addRoutingConfig("bgpd", "neighbor {} route-map rmap_in in".format(ip2.split("/")[0]))
+            switch_list[index1].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(ip2.split("/")[0]))
             switch_list[index1].addRoutingConfig("bfdd", "peer {}".format(ip2.split("/")[0]))
             switch_list[index1].addRoutingConfig("bfdd", "no shutdown")
             switch_list[index1].addRoutingConfig("bfdd", "receive-interval 100")
@@ -102,6 +103,7 @@ for i in range(0, numOfAS):
             switch_list[index2].addRoutingConfig("bgpd", "neighbor {} bfd".format(ip1.split("/")[0]))
             switch_list[index2].addRoutingConfig("bgpd", "neighbor {} route-map rmap_out out".format(ip1.split("/")[0]))
             switch_list[index2].addRoutingConfig("bgpd", "neighbor {} route-map rmap_in in".format(ip1.split("/")[0]))
+            switch_list[index2].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(ip1.split("/")[0]))
             switch_list[index2].addRoutingConfig("bfdd", "peer {}".format(ip1.split("/")[0]))
             switch_list[index2].addRoutingConfig("bfdd", "no shutdown")
             switch_list[index2].addRoutingConfig("bfdd", "receive-interval 100")
@@ -226,7 +228,7 @@ for i in range(0, numOfAS):
 
     switch_list[edgeRouter].addRoutingConfig(None, "route-map rmap_out permit 10")
     switch_list[edgeRouter].addRoutingConfig(None, "match ip address prefix-list net_in_as")
-    switch_list[edgeRouter].addRoutingConfig(None, "set community {}:10".format(i))
+    switch_list[edgeRouter].addRoutingConfig(None, "set community {}:10".format(i if i != 1 else 0))
 
 for snet in snet_list:
     snet.installSubnetTable()
@@ -236,7 +238,6 @@ info('*** Exp Setup\n')
 nodes.writeFile("topo.txt")
 os.system("docker cp /m/local2/wcr/Diagnosis-driver/driver.tar.bz mn.admin:/")
 os.system("docker cp /m/local2/wcr/Mininet-Emulab/topo.txt mn.admin:/")
-os.system("docker cp /m/local2/wcr/Diagnosis-driver/example_mesh.config mn.admin:/")
 
 info('*** Starting network\n')
 
