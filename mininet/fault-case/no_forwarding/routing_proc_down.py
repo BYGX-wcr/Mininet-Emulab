@@ -57,6 +57,7 @@ for i in range(0, numOfAS * sizeOfAS):
     new_switch.addRoutingConfig(configStr="debug bfd zebra")
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=int(i / sizeOfAS + 1)))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
+    new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
     new_switch.addRoutingConfig("ospfd", "router ospf")
     new_switch.addRoutingConfig("ospfd", "ospf router-id " + new_switch.getLoopbackIP())
 
