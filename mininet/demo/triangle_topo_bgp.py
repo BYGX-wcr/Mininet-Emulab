@@ -26,10 +26,10 @@ info('*** Adding docker containers\n')
 
 host_list = list()
 for i in range(0, numOfAS * (sizeOfAS - 1)):
-    new_host = net.addDocker('d{}'.format(i), dimage="ubuntu:trusty_v2")
+    new_host = net.addDocker('d{}'.format(i), dimage="localhost/ubuntu:trusty_v2")
     host_list.append(new_host)
 
-admin_host = net.addDocker('admin', dimage="p4switch-frr:v4")
+admin_host = net.addDocker('admin', dimage="localhost/p4switch-frr:v5")
 host_list.append(admin_host)
 
 info('*** Adding switches\n')
@@ -37,7 +37,7 @@ info('*** Adding switches\n')
 switch_list = list()
 for i in range(0, numOfAS * sizeOfAS):
     new_switch = net.addDocker('s{}'.format(i), cls=DockerP4Router, 
-                         dimage="p4switch-frr:v4",
+                         dimage="localhost/p4switch-frr:v5",
                          software="frr",
                          json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v0.json", 
                          pcap_dump="/tmp",
@@ -85,9 +85,9 @@ for i in range(0, numOfAS):
             link = net.addLink(switch_list[index1], switch_list[index2], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
             snet_list[snet_counter].addNode(switch_list[index1], switch_list[index2])
 
-            nodes.addNode(switch_list[index1].name, ip=ip1, nodeType="switch")
-            nodes.addNode(switch_list[index2].name, ip=ip2, nodeType="switch")
-            nodes.addLink(switch_list[index1].name, switch_list[index2].name)
+            nodes.addNode(switch_list[index1].name, ip=switch_list[index1].getLoopbackIP(), nodeType="switch")
+            nodes.addNode(switch_list[index2].name, ip=switch_list[index2].getLoopbackIP(), nodeType="switch")
+            nodes.addLink(switch_list[index1].name, switch_list[index2].name, ip1=ip1, ip2=ip2)
 
             # configure eBGP peers
             switch_list[index1].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(ip2.split("/")[0], j + 1))
@@ -120,23 +120,27 @@ for i in range(0, numOfAS):
 
         # config IGP routing, using OSPF
         switch_list[index1].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
+        switch_list[index1].addRoutingConfig("ospfd", "network " + switch_list[index1].getLoopbackIP() + "/32" + " area {}".format(0))
         switch_list[index2].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
 
         # select edge router ip
         if index1 == edgeRouter:
-            edgeRouterIp = ip1
+            edgeRouterIp = switch_list[index1].getLoopbackIP()
 
         # config iBGP peers
         if index1 != edgeRouter:
-            switch_list[edgeRouter].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(ip1.split("/")[0], i + 1))
-            switch_list[index1].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(edgeRouterIp.split("/")[0], i + 1))
+            loopbackIP1 = switch_list[index1].getLoopbackIP()
+            switch_list[edgeRouter].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(loopbackIP1, i + 1))
+            switch_list[edgeRouter].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(loopbackIP1, edgeRouterIp))
+            switch_list[index1].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(edgeRouterIp, i + 1))
+            switch_list[index1].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(edgeRouterIp, loopbackIP1))
 
         # add new bgp advertised network prefix
         bgp_network_list.append(snet_list[snet_counter].getNetworkPrefix())
 
-        nodes.addNode(switch_list[index1].name, ip=ip1, nodeType="switch")
-        nodes.addNode(switch_list[index2].name, ip=ip2, nodeType="switch")
-        nodes.addLink(switch_list[index1].name, switch_list[index2].name)
+        nodes.addNode(switch_list[index1].name, ip=switch_list[index1].getLoopbackIP(), nodeType="switch")
+        nodes.addNode(switch_list[index2].name, ip=switch_list[index2].getLoopbackIP(), nodeType="switch")
+        nodes.addLink(switch_list[index1].name, switch_list[index2].name, ip1=ip1, ip2=ip2)
 
         snet_counter += 1
 
@@ -162,7 +166,7 @@ for i in range(0, numOfAS):
         host_list[hid].setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 
         nodes.addNode(host_list[hid].name, ip=ip2, nodeType="host")
-        nodes.addLink(switch_list[sid].name, host_list[hid].name)
+        nodes.addLink(switch_list[sid].name, host_list[hid].name, ip1, ip2)
 
         # add a new advertised network prefix for the AS
         switch_list[edgeRouter].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
@@ -177,7 +181,7 @@ snet_list[snet_counter].addNode(switch_list[0])
 switch_list[0].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
 admin_host.setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 nodes.addNode(admin_host.name, ip=ip2, nodeType="host")
-nodes.addLink(switch_list[0].name, admin_host.name)
+nodes.addLink(switch_list[0].name, admin_host.name, ip1, ip2)
 switch_list[0].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 snet_counter += 1
 adminIP = ip2.split("/")[0]

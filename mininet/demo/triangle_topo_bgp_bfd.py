@@ -86,7 +86,7 @@ for i in range(0, numOfAS):
 
             nodes.addNode(switch_list[index1].name, ip=ip1, nodeType="switch")
             nodes.addNode(switch_list[index2].name, ip=ip2, nodeType="switch")
-            nodes.addLink(switch_list[index1].name, switch_list[index2].name)
+            nodes.addLink(switch_list[index1].name, switch_list[index2].name, ip1=ip1, ip2=ip2)
 
             # configure eBGP peers with BFD enabled
             # --- switch1
@@ -162,7 +162,7 @@ for i in range(0, numOfAS):
 
         nodes.addNode(switch_list[index1].name, ip=ip1, nodeType="switch")
         nodes.addNode(switch_list[index2].name, ip=ip2, nodeType="switch")
-        nodes.addLink(switch_list[index1].name, switch_list[index2].name)
+        nodes.addLink(switch_list[index1].name, switch_list[index2].name, ip1=ip1, ip2=ip2)
 
         snet_counter += 1
 
@@ -188,7 +188,7 @@ for i in range(0, numOfAS):
         host_list[hid].setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 
         nodes.addNode(host_list[hid].name, ip=ip2, nodeType="host")
-        nodes.addLink(switch_list[sid].name, host_list[hid].name)
+        nodes.addLink(switch_list[sid].name, host_list[hid].name, ip1=ip1, ip2=ip2)
 
         # add a new advertised network prefix for the AS
         switch_list[edgeRouter].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
@@ -203,7 +203,7 @@ snet_list[snet_counter].addNode(switch_list[0])
 switch_list[0].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
 admin_host.setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 nodes.addNode(admin_host.name, ip=ip2, nodeType="host")
-nodes.addLink(switch_list[0].name, admin_host.name)
+nodes.addLink(switch_list[0].name, admin_host.name, ip1=ip1, ip2=ip2)
 switch_list[0].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 snet_counter += 1
 adminIP = ip2.split("/")[0]
