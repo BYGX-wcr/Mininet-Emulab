@@ -41,6 +41,7 @@ for i in range(0, numOfAS * sizeOfAS):
                          log_console=True,
                          log_level="info",
                          rt_mediator= "/m/local2/wcr/P4-Switches/rt_mediator.py",
+                         runtime_api= "/m/local2/wcr/P4-Switches/runtime_API.py",
                          switch_agent= "/m/local2/wcr/P4-Switches/switch_agent.py",
                          bgpd='yes',
                          ospfd='yes',

@@ -1323,6 +1323,7 @@ class DockerP4Router( DockerRouter ):
                  verbose = False,
                  enable_debugger = False,
                  rt_mediator = None,
+                 runtime_api = None,
                  switch_agent = None,
                  **kwargs):
         DockerRouter.__init__(self, name, **kwargs)
@@ -1341,6 +1342,7 @@ class DockerP4Router( DockerRouter ):
         self.log_level = log_level
         self.nanomsg = "ipc:///tmp/bm-log.ipc"
         self.rt_mediator = rt_mediator
+        self.runtime_api = runtime_api
         self.switch_agent = switch_agent
         self.cpu_input_port = cpu_input_port
         self.cpu_output_port = cpu_output_port
@@ -1489,6 +1491,10 @@ class DockerP4Router( DockerRouter ):
         # import rt_mediator if path is not null
         if self.rt_mediator:
             os.system("docker cp " + self.rt_mediator + " " + self.dc['Id'] + ":/tmp/rt_mediator")
+
+        # import switch_agent if path is not null
+        if self.runtime_api:
+            os.system("docker cp " + self.runtime_api + " " + self.dc['Id'] + ":/usr/local/lib/python3.5/site-packages/runtime_API.py")
 
         # import switch_agent if path is not null
         if self.switch_agent:
