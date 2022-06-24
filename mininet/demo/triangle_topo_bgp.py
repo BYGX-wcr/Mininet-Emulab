@@ -29,7 +29,7 @@ for i in range(0, numOfAS * (sizeOfAS - 1)):
     new_host = net.addDocker('d{}'.format(i), dimage="localhost/ubuntu:trusty_v2")
     host_list.append(new_host)
 
-admin_host = net.addDocker('admin', dimage="localhost/p4switch-frr:v6")
+admin_host = net.addDocker('admin', dimage="localhost/p4switch-frr:v7")
 host_list.append(admin_host)
 
 info('*** Adding switches\n')
@@ -37,7 +37,7 @@ info('*** Adding switches\n')
 switch_list = list()
 for i in range(0, numOfAS * sizeOfAS):
     new_switch = net.addDocker('s{}'.format(i), cls=DockerP4Router, 
-                         dimage="localhost/p4switch-frr:v6",
+                         dimage="localhost/p4switch-frr:v7",
                          software="frr",
                          json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v0.json", 
                          pcap_dump="/tmp",
@@ -191,6 +191,9 @@ for snet in snet_list:
     snet.installSubnetTable()
 
 info('*** Exp Setup\n')
+
+# add ACL to switch 0
+DockerP4Router.addACLConfig(switch_list[3], dstAddr="0x0a110000&&&0xffff0000")
 
 nodes.writeFile("topo.txt")
 os.system("docker cp /m/local2/wcr/Diagnosis-driver/driver.tar.bz mn.admin:/")

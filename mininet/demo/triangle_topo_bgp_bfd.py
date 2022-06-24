@@ -23,10 +23,10 @@ info('*** Adding docker containers\n')
 
 host_list = list()
 for i in range(0, numOfAS * (sizeOfAS - 1)):
-    new_host = net.addDocker('d{}'.format(i), dimage="ubuntu:trusty_v2")
+    new_host = net.addDocker('d{}'.format(i), dimage="localhost/ubuntu:trusty_v2")
     host_list.append(new_host)
 
-admin_host = net.addDocker('admin', dimage="p4switch-frr:v4")
+admin_host = net.addDocker('admin', dimage="localhost/p4switch-frr:v7")
 host_list.append(admin_host)
 
 info('*** Adding switches\n')
@@ -34,7 +34,7 @@ info('*** Adding switches\n')
 switch_list = list()
 for i in range(0, numOfAS * sizeOfAS):
     new_switch = net.addDocker('s{}'.format(i), cls=DockerP4Router, 
-                         dimage="p4switch-frr:v4",
+                         dimage="localhost/p4switch-frr:v7",
                          software="frr",
                          json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v0.json", 
                          pcap_dump="/tmp",
@@ -45,7 +45,7 @@ for i in range(0, numOfAS * sizeOfAS):
                          switch_agent= "/m/local2/wcr/P4-Switches/switch_agent.py",
                          bgpd='yes',
                          ospfd='yes',
-                         bfdd='no')
+                         bfdd='yes')
     switch_list.append(new_switch)
     new_switch.addRoutingConfig(configStr="log file /tmp/frr.log debugging")
     new_switch.addRoutingConfig(configStr="debug bgp neighbor-events")
@@ -217,7 +217,6 @@ info('*** Exp Setup\n')
 nodes.writeFile("topo.txt")
 os.system("docker cp /m/local2/wcr/Diagnosis-driver/driver.tar.bz mn.admin:/")
 os.system("docker cp /m/local2/wcr/Mininet-Emulab/topo.txt mn.admin:/")
-os.system("docker cp /m/local2/wcr/Diagnosis-driver/example_mesh.config mn.admin:/")
 
 info('*** Starting network\n')
 

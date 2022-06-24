@@ -78,8 +78,8 @@ class Subnet:
                 macTable.append([Subnet.ipToStr(ip), Subnet.ipToMac(Subnet.ipToStr(ip))])
 
         for node in self.nodeList:
-            if issubclass(type(node), mininet.node.DockerRouter):
-                node.installSubnetTable(macTable, self)
+            if issubclass(type(node), mininet.node.DockerP4Router):
+                node.setupSubnetTable(macTable, self)
 
     @staticmethod
     def ipToMac(ipStr):

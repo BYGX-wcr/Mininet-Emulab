@@ -1347,13 +1347,50 @@ class DockerP4Router( DockerRouter ):
         self.cpu_input_port = cpu_input_port
         self.cpu_output_port = cpu_output_port
 
+        # ACL(access control list) configuration
+        self.aclConfig = []
+
     def setAdminConfig(self, adminIP, faultReportCollectionPort):
         self.adminIP = adminIP
         self.faultReportCollectionPort = faultReportCollectionPort
 
-    def installSubnetTable(self, macTable, subnet, DMTName="DstMac_RW", DMTAction="set_dmac", LpmName="Ipv4_FIB", LpmAction="ipv4_forward"):
+    def addACLConfig(self, dstAddr = None, srcAddr = None, protocol = None, dstPort = None, srcPort = None) -> str:
+        acl_entry = ["0&&&0"] * 7
+        if dstAddr != None:
+            acl_entry[0] = dstAddr
+        if srcAddr != None:
+            acl_entry[1] = srcAddr
+        if protocol != None:
+            acl_entry[2] = protocol if isinstance(protocol, str) else "{}&&&0xff".format(protocol)
+
+        if protocol == 6:
+            # TCP
+            if dstPort != None:
+                acl_entry[3] = dstPort if isinstance(dstPort, str) else "{}&&&0xffff".format(dstPort)
+            if srcPort != None:
+                acl_entry[4] = srcPort if isinstance(srcPort, str) else "{}&&&0xffff".format(srcPort)
+        elif protocol == 17:
+            # UDP
+            if dstPort != None:
+                acl_entry[5] = dstPort if isinstance(dstPort, str) else "{}&&&0xffff".format(dstPort)
+            if srcPort != None:
+                acl_entry[6] = srcPort if isinstance(srcPort, str) else "{}&&&0xffff".format(srcPort)
+
+        self.aclConfig.append(acl_entry)
+
+    def setupACL(self):
         """
-        Prepare subnet entries of the Dst MAC table and Ipv4 LPm table,.
+        Prepare ACL entries of the ACL filter table.
+        """
+        filename = "./ACL-{}.txt".format(self.name)
+        with open(filename, "w", encoding="utf-8") as file:
+            # write ACL commands into the file
+            for entry in self.aclConfig:
+                file.write("table_add Filter_ACL acl_drop " + " ".join(entry) + " => 1\n")
+
+    def setupSubnetTable(self, macTable, subnet, DMTName="DstMac_RW", DMTAction="set_dmac", LpmName="Ipv4_FIB", LpmAction="ipv4_forward"):
+        """
+        Prepare subnet entries of the Dst MAC table and Ipv4 LPM table.
         """
         filename = "./Subnet-{}.txt".format(self.name)
         with open(filename, "a", encoding="utf-8") as file:
@@ -1369,7 +1406,7 @@ class DockerP4Router( DockerRouter ):
                     file.write("table_add {} {} {} => 0.0.0.1 {}\n".format(LpmName, LpmAction, subnet.getNetworkPrefix(), port))
                     break
 
-    def installStartupTables(self, SMTName="SrcMac_RW", SMTAction="set_smac", DMTName="DstMac_RW", DMTAction="set_dmac", LpmName="Ipv4_FIB", LpmAction="ipv4_forward"):
+    def setupStartupTables(self, SMTName="SrcMac_RW", SMTAction="set_smac", DMTName="DstMac_RW", DMTAction="set_dmac", LpmName="Ipv4_FIB", LpmAction="ipv4_forward"):
         """
         Prepare entries for the local switch interfaces including data ports, control-plane ports and data-plane ports.
         SMT -> Source Mac Table
@@ -1397,8 +1434,10 @@ class DockerP4Router( DockerRouter ):
 
             # configure mirroring_session for potential usage
             file.write("mirroring_add 819 80\n")
-        
+    
+    def installTables(self):
         # copy the file into the tmp directory of docker container
+        filename = "./Startup-{}.txt".format(self.name)
         os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/Startup_cmds")
 
         # remove the file
@@ -1416,6 +1455,16 @@ class DockerP4Router( DockerRouter ):
             os.remove(filename)
         except:
             print("No Subnet-{}.txt! ".format(self.name))
+
+        # copy the ACL file into the tmp directory of docker container
+        filename = "./ACL-{}.txt".format(self.name)
+        os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/ACL_cmds")
+
+        # remove the subnet file
+        try:
+            os.remove(filename)
+        except:
+            print("No ACL-{}.txt! ".format(self.name))
 
     def start(self):
         """Start up a new P4 switch"""
@@ -1504,13 +1553,17 @@ class DockerP4Router( DockerRouter ):
         self.cmd(' '.join(args) + ' >/tmp/p4bm.log 2>&1 &') # p4 bmv2
         # time.sleep(1) # wait for starting switch
 
-        self.installStartupTables()
+        self.setupStartupTables()
+        self.setupACL()
+        self.installTables()
         # install initial table entries
         check_point1 = "init"
         check_point2 = "init"
+        check_point3 = "init"
         while "RuntimeCmd" not in check_point1 or "RuntimeCmd" not in check_point2:
             check_point1 = self.cmd("simple_switch_CLI < /tmp/Startup_cmds")
             check_point2 = self.cmd("simple_switch_CLI < /tmp/Subnet_cmds")
+            check_point3 = self.cmd("simple_switch_CLI < /tmp/ACL_cmds")
 
         # start rt_mediator
         if self.rt_mediator != None:
