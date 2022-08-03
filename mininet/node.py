@@ -1325,6 +1325,7 @@ class DockerP4Router( DockerRouter ):
                  rt_mediator = None,
                  runtime_api = None,
                  switch_agent = None,
+                 bgp_adv_modifier = None,
                  **kwargs):
         DockerRouter.__init__(self, name, **kwargs)
         assert(json_path)
@@ -1343,6 +1344,7 @@ class DockerP4Router( DockerRouter ):
         self.nanomsg = "ipc:///tmp/bm-log.ipc"
         self.rt_mediator = rt_mediator
         self.runtime_api = runtime_api
+        self.bgp_adv_modifier = bgp_adv_modifier
         self.switch_agent = switch_agent
         self.cpu_input_port = cpu_input_port
         self.cpu_output_port = cpu_output_port
@@ -1548,6 +1550,10 @@ class DockerP4Router( DockerRouter ):
         # import switch_agent if path is not null
         if self.switch_agent:
             os.system("docker cp " + self.switch_agent + " " + self.dc['Id'] + ":/tmp/switch_agent")
+
+        # import bgp_adv_modifier if path is not null
+        if self.bgp_adv_modifier:
+            os.system("docker cp " + self.bgp_adv_modifier + " " + self.dc['Id'] + ":/bgp_adv_modifier")
 
         # start bmv2
         self.cmd(' '.join(args) + ' >/tmp/p4bm.log 2>&1 &') # p4 bmv2

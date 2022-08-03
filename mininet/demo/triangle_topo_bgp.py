@@ -1,6 +1,6 @@
 #!/usr/bin/python
 """
-This is a simple example to emulate a common network fault, random packet drops on some switch.
+A topology of three ASs connected to form a triangle.
 """
 import sys
 sys.path.append('/m/local2/wcr/Mininet-Emulab')
@@ -58,7 +58,7 @@ for i in range(0, numOfAS * sizeOfAS):
     new_switch.addRoutingConfig(configStr="debug bfd zebra")
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=int(i / sizeOfAS + 1)))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
-    new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
+    # new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
     new_switch.addRoutingConfig("ospfd", "router ospf")
     new_switch.addRoutingConfig("ospfd", "ospf router-id " + new_switch.getLoopbackIP())
 
@@ -74,6 +74,10 @@ snet_counter = 0
 
 # configure inter-AS switch-switch links
 for i in range(0, numOfAS):
+    switch_list[i * sizeOfAS].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community {}:1".format(i + 1, i + 1))
+    switch_list[i * sizeOfAS].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 20\nmatch community OUT_AS_FILTER")
+    switch_list[i * sizeOfAS].addRoutingConfig(configStr="route-map IN_AS_RMAP permit 10\nmatch community IN_AS_FILTER")
+
     for j in range(i + 1, numOfAS):
         index1 = i * sizeOfAS
         index2 = j * sizeOfAS
@@ -93,14 +97,26 @@ for i in range(0, numOfAS):
             # configure eBGP peers
             switch_list[index1].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(ip2.split("/")[0], j + 1))
             switch_list[index1].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(ip2.split("/")[0]))
+            switch_list[index1].addRoutingConfig("bgpd", "neighbor {} route-map OUT_AS_RMAP out".format(ip2.split("/")[0]))
+            switch_list[index1].addRoutingConfig("bgpd", "neighbor {} route-map IN_AS_RMAP in".format(ip2.split("/")[0]))
+
             switch_list[index2].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(ip1.split("/")[0], i + 1))
             switch_list[index2].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(ip1.split("/")[0]))
+            switch_list[index2].addRoutingConfig("bgpd", "neighbor {} route-map OUT_AS_RMAP out".format(ip1.split("/")[0]))
+            switch_list[index2].addRoutingConfig("bgpd", "neighbor {} route-map IN_AS_RMAP in".format(ip1.split("/")[0]))
 
             # add new advertised network prefix
             switch_list[index1].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
             switch_list[index2].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 
             snet_counter += 1
+
+    for j in range(0, numOfAS):
+        if j != i:
+            switch_list[i * sizeOfAS].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER deny {}:1".format(j + 1))
+            switch_list[i * sizeOfAS].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(j + 1))
+
+    switch_list[i * sizeOfAS].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit {}:1".format(i + 1))
 
 # configure intra-AS switch-switch links
 for i in range(0, numOfAS):
@@ -131,10 +147,16 @@ for i in range(0, numOfAS):
         # config iBGP peers
         if index1 != edgeRouter:
             loopbackIP1 = switch_list[index1].getLoopbackIP()
+
             switch_list[edgeRouter].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(loopbackIP1, i + 1))
             switch_list[edgeRouter].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(loopbackIP1, edgeRouterIp))
+            switch_list[edgeRouter].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(loopbackIP1))
+
             switch_list[index1].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(edgeRouterIp, i + 1))
             switch_list[index1].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(edgeRouterIp, loopbackIP1))
+            switch_list[index1].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(edgeRouterIp))
+            switch_list[index1].addRoutingConfig("bgpd", "neighbor {} route-map RMAP out".format(edgeRouterIp))
+            switch_list[index1].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(i + 1))
 
         # add new bgp advertised network prefix
         bgp_network_list.append(snet_list[snet_counter].getNetworkPrefix())
@@ -148,6 +170,7 @@ for i in range(0, numOfAS):
     # configure the advertised network prefixes for the AS
     for bgpNetwork in bgp_network_list:
         switch_list[edgeRouter].addRoutingConfig("bgpd", "network " + bgpNetwork)
+        switch_list[edgeRouter].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit " + bgpNetwork)
 
 # configure host-switch links
 for i in range(0, numOfAS):
@@ -170,7 +193,7 @@ for i in range(0, numOfAS):
         nodes.addLink(switch_list[sid].name, host_list[hid].name, ip1, ip2)
 
         # add a new advertised network prefix for the AS
-        switch_list[edgeRouter].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
+        switch_list[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 
         snet_counter += 1
 
@@ -184,6 +207,7 @@ admin_host.setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 nodes.addNode(admin_host.name, ip=ip2, nodeType="host")
 nodes.addLink(switch_list[0].name, admin_host.name, ip1, ip2)
 switch_list[0].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
+switch_list[0].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit " + snet_list[snet_counter].getNetworkPrefix())
 snet_counter += 1
 adminIP = ip2.split("/")[0]
 
@@ -191,9 +215,6 @@ for snet in snet_list:
     snet.installSubnetTable()
 
 info('*** Exp Setup\n')
-
-# add ACL to switch 0
-DockerP4Router.addACLConfig(switch_list[3], dstAddr="0x0a110000&&&0xffff0000")
 
 nodes.writeFile("topo.txt")
 os.system("docker cp /m/local2/wcr/Diagnosis-driver/driver.tar.bz mn.admin:/")
