@@ -36,8 +36,8 @@ info('*** AS 1 (with admin host)\n')
 for i in range(0, 1):
     new_host = net.addDocker('d{}'.format(host_count), dimage=host_image)
     as_map['d{}'.format(host_count)] = 1
-    host_count += 1
     host_dict['d{}'.format(host_count)] = new_host
+    host_count += 1
 
 # admin
 host_dict['admin'] = net.addDocker('admin', dimage=switch_image)
@@ -56,17 +56,15 @@ for i in range(0, 1):
                          switch_agent= "/m/local2/wcr/P4-Switches/switch_agent.py",
                          bgpd='yes',
                          ospfd='yes')
-    switch_count += 1
     as_map['s{}'.format(switch_count)] = 1
     switch_dict['s{}'.format(switch_count)] = new_switch
+    switch_count += 1
 
     new_switch.addRoutingConfig(configStr="log file /tmp/frr.log debugging")
     new_switch.addRoutingConfig(configStr="debug bgp neighbor-events")
     new_switch.addRoutingConfig(configStr="debug bgp bfd")
     new_switch.addRoutingConfig(configStr="debug bgp nht")
-    new_switch.addRoutingConfig(configStr="debug bfd network")
-    new_switch.addRoutingConfig(configStr="debug bfd peer")
-    new_switch.addRoutingConfig(configStr="debug bfd zebra")
+    new_switch.addRoutingConfig(configStr="debug zebra dplane detailed")
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=1))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
     # new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
@@ -79,8 +77,8 @@ info('*** AS 2\n')
 for i in range(0, 2):
     new_host = net.addDocker('d{}'.format(host_count), dimage=host_image)
     as_map['d{}'.format(host_count)] = 2
-    host_count += 1
     host_dict['d{}'.format(host_count)] = new_host
+    host_count += 1
 
 # s1 s2 s3 s4 s5 s6 s7
 for i in range(0, 7):
@@ -97,16 +95,14 @@ for i in range(0, 7):
                          bgpd='yes',
                          ospfd='yes')
     as_map['s{}'.format(switch_count)] = 2
+    switch_dict['s{}'.format(switch_count)] = new_switch
     switch_count += 1
 
-    switch_dict['s{}'.format(switch_count)] = new_switch
     new_switch.addRoutingConfig(configStr="log file /tmp/frr.log debugging")
     new_switch.addRoutingConfig(configStr="debug bgp neighbor-events")
     new_switch.addRoutingConfig(configStr="debug bgp bfd")
     new_switch.addRoutingConfig(configStr="debug bgp nht")
-    new_switch.addRoutingConfig(configStr="debug bfd network")
-    new_switch.addRoutingConfig(configStr="debug bfd peer")
-    new_switch.addRoutingConfig(configStr="debug bfd zebra")
+    new_switch.addRoutingConfig(configStr="debug zebra dplane detailed")
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=2))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
     # new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
@@ -119,8 +115,8 @@ info('*** AS 3\n')
 for i in range(0, 2):
     new_host = net.addDocker('d{}'.format(host_count), dimage=host_image)
     as_map['d{}'.format(host_count)] = 3
-    host_count += 1
     host_dict['d{}'.format(host_count)] = new_host
+    host_count += 1
 
 # s8 s9 s10 s11 s12 s13 s14
 for i in range(0, 7):
@@ -137,16 +133,14 @@ for i in range(0, 7):
                          bgpd='yes',
                          ospfd='yes')
     as_map['s{}'.format(switch_count)] = 3
+    switch_dict['s{}'.format(switch_count)] = new_switch
     switch_count += 1
 
-    switch_dict['s{}'.format(switch_count)] = new_switch
     new_switch.addRoutingConfig(configStr="log file /tmp/frr.log debugging")
     new_switch.addRoutingConfig(configStr="debug bgp neighbor-events")
     new_switch.addRoutingConfig(configStr="debug bgp bfd")
     new_switch.addRoutingConfig(configStr="debug bgp nht")
-    new_switch.addRoutingConfig(configStr="debug bfd network")
-    new_switch.addRoutingConfig(configStr="debug bfd peer")
-    new_switch.addRoutingConfig(configStr="debug bfd zebra")
+    new_switch.addRoutingConfig(configStr="debug zebra dplane detailed")
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=3))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
     # new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
@@ -159,8 +153,8 @@ info('*** AS 4\n')
 for i in range(0, 1):
     new_host = net.addDocker('d{}'.format(host_count), dimage=host_image)
     as_map['d{}'.format(host_count)] = 4
-    host_count += 1
     host_dict['d{}'.format(host_count)] = new_host
+    host_count += 1
 
 # s15
 for i in range(0, 1):
@@ -177,16 +171,14 @@ for i in range(0, 1):
                          bgpd='yes',
                          ospfd='yes')
     as_map['s{}'.format(switch_count)] = 4
+    switch_dict['s{}'.format(switch_count)] = new_switch
     switch_count += 1
 
-    switch_dict['s{}'.format(switch_count)] = new_switch
     new_switch.addRoutingConfig(configStr="log file /tmp/frr.log debugging")
     new_switch.addRoutingConfig(configStr="debug bgp neighbor-events")
     new_switch.addRoutingConfig(configStr="debug bgp bfd")
     new_switch.addRoutingConfig(configStr="debug bgp nht")
-    new_switch.addRoutingConfig(configStr="debug bfd network")
-    new_switch.addRoutingConfig(configStr="debug bfd peer")
-    new_switch.addRoutingConfig(configStr="debug bfd zebra")
+    new_switch.addRoutingConfig(configStr="debug zebra dplane detailed")
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=4))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
     # new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
@@ -199,8 +191,8 @@ info('*** AS 5\n')
 for i in range(0, 2):
     new_host = net.addDocker('d{}'.format(host_count), dimage=host_image)
     as_map['d{}'.format(host_count)] = 5
-    host_count += 1
     host_dict['d{}'.format(host_count)] = new_host
+    host_count += 1
 
 # s16 s17 s18 s19
 for i in range(0, 4):
@@ -217,16 +209,14 @@ for i in range(0, 4):
                          bgpd='yes',
                          ospfd='yes')
     as_map['s{}'.format(switch_count)] = 5
+    switch_dict['s{}'.format(switch_count)] = new_switch
     switch_count += 1
 
-    switch_dict['s{}'.format(switch_count)] = new_switch
     new_switch.addRoutingConfig(configStr="log file /tmp/frr.log debugging")
     new_switch.addRoutingConfig(configStr="debug bgp neighbor-events")
     new_switch.addRoutingConfig(configStr="debug bgp bfd")
     new_switch.addRoutingConfig(configStr="debug bgp nht")
-    new_switch.addRoutingConfig(configStr="debug bfd network")
-    new_switch.addRoutingConfig(configStr="debug bfd peer")
-    new_switch.addRoutingConfig(configStr="debug bfd zebra")
+    new_switch.addRoutingConfig(configStr="debug zebra dplane detailed")
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=5))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
     # new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
@@ -281,10 +271,14 @@ for snet in snet_list:
     snet.installSubnetTable()
 
 # configure policy for edge routers
-for s in set("s0", "s1", "s2", "s3", "s8", "s9", "s10", "s15", "s16", "s17"):
-    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community {}:1".format(1))
-    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 20\nmatch community OUT_AS_FILTER")
+for s in {"s0", "s1", "s2", "s3", "s8", "s9", "s10", "s15", "s16", "s17"}:
+    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community {}:1".format(as_map[s]))
+    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 20\nmatch ip address prefix-list INTERNET_PREFIX_LIST\nset community internet")
+    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 30\nmatch community OUT_AS_FILTER")
     switch_dict[s].addRoutingConfig(configStr="route-map IN_AS_RMAP permit 10\nmatch community IN_AS_FILTER")
+    switch_dict[s].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit internet")
+    switch_dict[s].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit internet")
+    switch_dict[s].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit " + "10.0.0.0/16")
 
 # s0 advertise and accept routes from all AS
 for i in range(1, 6):
@@ -310,7 +304,7 @@ for i in range(1, 6):
         switch_dict["s3"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER deny {}:1".format(i))
     else:
         switch_dict["s3"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit {}:1".format(i))
-for i in set(2, 5):
+for i in {2, 5}:
     switch_dict["s3"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
 
 # s8 does not advertise routes from other AS but accept all routes and only accept routes from AS 2 and 5
@@ -319,7 +313,7 @@ for i in range(1, 6):
         switch_dict["s8"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER deny {}:1".format(i))
     else:
         switch_dict["s8"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit {}:1".format(i))
-for i in set(3, 1):
+for i in {3, 1}:
     switch_dict["s8"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
 
 # s9 advertise and accept routes from all AS
@@ -418,9 +412,9 @@ for snet in snet_list:
 
 info('*** AS2\n')
 
-edge_switches = set("s1", "s2", "s3")
-route_reflectors = set("s4", "s5")
-inner_switches = set("s6", "s7")
+edge_switches = {"s1", "s2", "s3"}
+route_reflectors = {"s4", "s5"}
+inner_switches = {"s6", "s7"}
 
 snet_list = list()
 for i in range(0, 20):
@@ -473,8 +467,6 @@ for s in edge_switches:
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(client_router_ip, route_reflector_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(client_router_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} route-reflector-client".format(client_router_ip))
-        switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} route-map RMAP out".format(client_router_ip))
-        switch_dict[rr].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(2))
 
 for s in inner_switches:
     for rr in route_reflectors:
@@ -484,13 +476,15 @@ for s in inner_switches:
         switch_dict[s].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(route_reflector_ip, 2))
         switch_dict[s].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(route_reflector_ip, client_router_ip))
         switch_dict[s].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(route_reflector_ip))
+        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} disable-connected-check".format(route_reflector_ip))
+        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} route-map RMAP out".format(route_reflector_ip))
+        switch_dict[s].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(2))
 
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(client_router_ip, 2))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(client_router_ip, route_reflector_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(client_router_ip))
+        switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} disable-connected-check".format(client_router_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} route-reflector-client".format(client_router_ip))
-        switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} route-map RMAP out".format(client_router_ip))
-        switch_dict[rr].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(2))
 
 # configure host-switch links
 
@@ -520,9 +514,9 @@ for snet in snet_list:
 
 info('*** AS3\n')
 
-edge_switches = set("s8", "s9", "s10")
-route_reflectors = set("s11", "s12")
-inner_switches = set("s13", "s14")
+edge_switches = {"s8", "s9", "s10"}
+route_reflectors = {"s11", "s12"}
+inner_switches = {"s13", "s14"}
 
 snet_list = list()
 for i in range(0, 20):
@@ -575,24 +569,24 @@ for s in edge_switches:
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(client_router_ip, route_reflector_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(client_router_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} route-reflector-client".format(client_router_ip))
-        switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} route-map RMAP out".format(client_router_ip))
-        switch_dict[rr].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(3))
 
 for s in inner_switches:
     for rr in route_reflectors:
         client_router_ip = switch_dict[s].getLoopbackIP()
         route_reflector_ip = switch_dict[rr].getLoopbackIP()
 
-        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(route_reflector_ip, 2))
+        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(route_reflector_ip, 3))
         switch_dict[s].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(route_reflector_ip, client_router_ip))
         switch_dict[s].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(route_reflector_ip))
+        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} disable-connected-check".format(route_reflector_ip))
+        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} route-map RMAP out".format(route_reflector_ip))
+        switch_dict[s].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(3))
 
-        switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(client_router_ip, 2))
+        switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(client_router_ip, 3))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(client_router_ip, route_reflector_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(client_router_ip))
+        switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} disable-connected-check".format(client_router_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} route-reflector-client".format(client_router_ip))
-        switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} route-map RMAP out".format(client_router_ip))
-        switch_dict[rr].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(2))
 
 # configure host-switch links
 
@@ -660,8 +654,8 @@ for snet in snet_list:
 
 info('*** AS5\n')
 
-edge_switches = set("s16", "s17")
-inner_switches = set("s18", "s19")
+edge_switches = {"s16", "s17"}
+inner_switches = {"s18", "s19"}
 
 snet_list = list()
 for i in range(0, 20):
@@ -718,7 +712,7 @@ for s in edge_switches:
 
 # configure host-switch links
 
-hs_pairs = [("s16", "d6"), ("s17", "d7")]
+hs_pairs = [("s18", "d6"), ("s19", "d7")]
 for t in hs_pairs:
     sid = t[0]
     hid = t[1]
@@ -758,6 +752,11 @@ for switch in switch_dict.values():
     switch.start()
 
 net.start()
+
+# restart frr to solve the uninstalled route issue
+time.sleep(10)
+for switch in switch_dict.values():
+    switch.cmd("/etc/init.d/frr restart")
 
 info('*** Running CLI\n')
 
