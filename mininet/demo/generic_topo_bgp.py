@@ -20,7 +20,6 @@ admin_ip = ""
 fault_report_collection_port = 9024
 
 info('*** Adding docker containers\n')
-
 host_image = "localhost/ubuntu:trusty_v2"
 host_dict = dict()
 host_count = 0
@@ -298,7 +297,7 @@ for i in range(1, 6):
 for i in range(1, 6):
     switch_dict["s2"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
 
-# s3 does not advertise routes from other AS but accept all routes and only accept routes from AS 2 and 5
+# s3 does not advertise routes from other AS and only accept routes from AS 2 and 5
 for i in range(1, 6):
     if i != 2:
         switch_dict["s3"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER deny {}:1".format(i))
@@ -307,7 +306,7 @@ for i in range(1, 6):
 for i in {2, 5}:
     switch_dict["s3"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
 
-# s8 does not advertise routes from other AS but accept all routes and only accept routes from AS 2 and 5
+# s8 does not advertise routes from other AS and only accept routes from AS 1
 for i in range(1, 6):
     if i != 3:
         switch_dict["s8"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER deny {}:1".format(i))
@@ -754,9 +753,9 @@ for switch in switch_dict.values():
 net.start()
 
 # restart frr to solve the uninstalled route issue
-time.sleep(10)
-for switch in switch_dict.values():
-    switch.cmd("/etc/init.d/frr restart")
+time.sleep(20)
+for switch in {"s6", "s7", "s13", "s14"}:
+    switch_dict[switch].cmd("/etc/init.d/frr restart")
 
 info('*** Running CLI\n')
 
