@@ -885,6 +885,8 @@ class Docker ( Node ):
             self.cmd("ethtool --offload {} rx off".format(intf.name))
             self.cmd("ethtool --offload {} tx off".format(intf.name))
 
+        self.cmd("iptables -t mangle -A OUTPUT -p icmp -j TOS --set-tos 0x00")
+
     # Command support via shell process in namespace
     def startShell( self, *args, **kwargs ):
         "Start a shell process for running commands"
@@ -1261,7 +1263,6 @@ class DockerRouter( Docker ):
         configStr += "bfdd_options=\\\"-f /etc/{software}/bfdd.conf\\\"\\n".format(software=self.software)
 
         self.cmd("echo -e \"{config}\" > /etc/{software}/daemons".format(config=configStr, software=self.software))
-        print("Configure daemons following {}".format(configStr))
 
     def setupRoutingConfigIntegratedly(self):
         configStr = "hostname {}\\n".format(self.name) + "password zebra\\n\\n"
@@ -1276,7 +1277,6 @@ class DockerRouter( Docker ):
             configStr += "\\n"
 
         self.cmd("echo -e \"{}\" > /etc/{}/{}.conf".format(configStr, self.software, self.software))
-        print("Configure protocols integratedly following {}".format(configStr))
 
     def setupGeneralConfig(self):
         """ Only used with setupRoutingConfigByProtocol because the integrated configuration file will always incorporate these general configurations """
@@ -1286,7 +1286,6 @@ class DockerRouter( Docker ):
             configStr += line + "\\n"
 
         self.cmd("echo -e \"{}\" > /etc/{}/{}.conf".format(configStr, self.software, self.software))
-        print("Setup the general configurations of routing software {}".format(configStr))
 
     def setupRoutingConfigByProtocol(self, protocol):
         configStr = ""
@@ -1296,7 +1295,6 @@ class DockerRouter( Docker ):
             configStr += i + "\\n"
 
         self.cmd("echo -e \"{}\" > /etc/{}/{}.conf".format(configStr, self.software, protocol))
-        print("Configure protocol {} following {}".format(protocol, configStr))
 
     def addRoutingConfig(self, protocol = None, configStr = ""):
         if protocol != None and configStr != "":
@@ -1387,6 +1385,7 @@ class DockerP4Router( DockerRouter ):
         filename = "./ACL-{}.txt".format(self.name)
         with open(filename, "w", encoding="utf-8") as file:
             # write ACL commands into the file
+            print("ACL n {}: {}".format(self.name, self.aclConfig))
             for entry in self.aclConfig:
                 file.write("table_add Filter_ACL acl_drop " + " ".join(entry) + " => 1\n")
 
@@ -1459,6 +1458,7 @@ class DockerP4Router( DockerRouter ):
             print("No Subnet-{}.txt! ".format(self.name))
 
         # copy the ACL file into the tmp directory of docker container
+        print("ACL: ", self.aclConfig)
         filename = "./ACL-{}.txt".format(self.name)
         os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/ACL_cmds")
 
@@ -1468,7 +1468,7 @@ class DockerP4Router( DockerRouter ):
         except:
             print("No ACL-{}.txt! ".format(self.name))
 
-    def start(self):
+    def start(self, debug = False):
         """Start up a new P4 switch"""
         # create & start a veth pair for CPU(Control-plane) input port
         makeIntfPair("dp-egress", "cp-ingress", node1=self, node2=self, addr1="aa:00:00:00:00:01", addr2="aa:00:00:00:00:02")     
@@ -1566,18 +1566,24 @@ class DockerP4Router( DockerRouter ):
         check_point1 = "init"
         check_point2 = "init"
         check_point3 = "init"
-        while "RuntimeCmd" not in check_point1 or "RuntimeCmd" not in check_point2:
+        while "RuntimeCmd" not in check_point1 or "RuntimeCmd" not in check_point2 or "RuntimeCmd" not in check_point3:
             check_point1 = self.cmd("simple_switch_CLI < /tmp/Startup_cmds")
             check_point2 = self.cmd("simple_switch_CLI < /tmp/Subnet_cmds")
             check_point3 = self.cmd("simple_switch_CLI < /tmp/ACL_cmds")
 
         # start rt_mediator
         if self.rt_mediator != None:
-            self.cmd("python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log &")
+            if debug == True:
+                self.cmd("strace -f -o /rt_mediator.strace python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log > /rt_mediator.out &")
+            else:
+                self.cmd("python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log --report-server-ip {} --report-server-port {} > /rt_mediator.out &".format(self.adminIP, self.faultReportCollectionPort))
 
         # start switch_agent
         if self.switch_agent != None:
-            self.cmd("python3 /tmp/switch_agent --log-file /tmp/switch_agent.log --report-server-ip {} --report-server-port {} --port-num {} &".format(self.adminIP, self.faultReportCollectionPort, len(self.intfs.keys())))
+            if debug == True:
+                self.cmd("strace -f -o /switch_agent.strace python3 /tmp/switch_agent --log-file /tmp/switch_agent.log --report-server-ip {} --report-server-port {} --port-num {} > /switch_agent.out &".format(self.adminIP, self.faultReportCollectionPort, len(self.intfs.keys())))
+            else:
+                self.cmd("python3 /tmp/switch_agent --log-file /tmp/switch_agent.log --report-server-ip {} --report-server-port {} --port-num {} > /switch_agent.out &".format(self.adminIP, self.faultReportCollectionPort, len(self.intfs.keys())))
 
         super().start()
 

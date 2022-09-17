@@ -20,11 +20,11 @@ admin_ip = ""
 fault_report_collection_port = 9024
 
 info('*** Adding docker containers\n')
-host_image = "localhost/ubuntu:trusty_v2"
+host_image = "localhost/rockylinux:v1"
 host_dict = dict()
 host_count = 0
 
-switch_image = "localhost/p4switch-frr:v7"
+switch_image = "localhost/p4switch-frr:v8"
 switch_dict = dict()
 switch_count = 0
 as_map = dict()
@@ -46,7 +46,7 @@ for i in range(0, 1):
     new_switch = net.addDocker('s{}'.format(switch_count), cls=DockerP4Router, 
                          dimage=switch_image,
                          software="frr",
-                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v0.json", 
+                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v1.json", 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
@@ -84,7 +84,7 @@ for i in range(0, 7):
     new_switch = net.addDocker('s{}'.format(switch_count), cls=DockerP4Router, 
                          dimage=switch_image,
                          software="frr",
-                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v0.json", 
+                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v1.json", 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
@@ -122,7 +122,7 @@ for i in range(0, 7):
     new_switch = net.addDocker('s{}'.format(switch_count), cls=DockerP4Router, 
                          dimage=switch_image,
                          software="frr",
-                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v0.json", 
+                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v1.json", 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
@@ -160,7 +160,7 @@ for i in range(0, 1):
     new_switch = net.addDocker('s{}'.format(switch_count), cls=DockerP4Router, 
                          dimage=switch_image,
                          software="frr",
-                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v0.json", 
+                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v1.json", 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
@@ -198,7 +198,7 @@ for i in range(0, 4):
     new_switch = net.addDocker('s{}'.format(switch_count), cls=DockerP4Router, 
                          dimage=switch_image,
                          software="frr",
-                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v0.json", 
+                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v1.json", 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
@@ -232,7 +232,43 @@ for i in range(0, 20):
     snet_list.append(new_snet)
 snet_counter = 0
 
-switch_pairs = [("s0", "s1"), ("s0", "s8"), ("s0", "s15"), ("s2", "s15"), ("s9", "s15"), ("s10", "s17"), ("s3", "s16")]
+# EBGP pairs between admin switch s0 and edge switches of all the other ASes
+admin_pairs = [("s0", "s1"), ("s0", "s8"), ("s0", "s15"), ("s0", "s16")]
+
+for t in admin_pairs:
+    ip1 = snet_list[snet_counter].allocateIPAddr()
+    ip2 = snet_list[snet_counter].allocateIPAddr()
+
+    index1 = t[0]
+    index2 = t[1]
+
+    # configure links
+    link = net.addLink(switch_dict[index1], switch_dict[index2], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+    snet_list[snet_counter].addNode(switch_dict[index1], switch_dict[index2])
+
+    nodes.addNode(switch_dict[index1].name, ip=switch_dict[index1].getLoopbackIP(), nodeType="switch")
+    nodes.addNode(switch_dict[index2].name, ip=switch_dict[index2].getLoopbackIP(), nodeType="switch")
+    nodes.addLink(switch_dict[index1].name, switch_dict[index2].name, ip1=ip1, ip2=ip2)
+
+    # configure eBGP peers
+    switch_dict[index1].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(ip2.split("/")[0], as_map[index2]))
+    switch_dict[index1].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(ip2.split("/")[0]))
+    switch_dict[index1].addRoutingConfig("bgpd", "neighbor {} route-map DENY_ADMIN_RMAP out".format(ip2.split("/")[0]))
+    switch_dict[index1].addRoutingConfig("bgpd", "neighbor {} route-map PERMIT_ADMIN_RMAP in".format(ip2.split("/")[0]))
+
+    switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(ip1.split("/")[0], as_map[index1]))
+    switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(ip1.split("/")[0]))
+    switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} route-map PERMIT_ADMIN_RMAP out".format(ip1.split("/")[0]))
+    switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} route-map DENY_ADMIN_RMAP in".format(ip1.split("/")[0]))
+
+    # add new advertised network prefix
+    switch_dict[index1].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
+    switch_dict[index2].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
+
+    snet_counter += 1
+
+# EBGP pairs between edge switches of non-admin ASes
+switch_pairs = [("s2", "s15"), ("s9", "s15"), ("s10", "s17"), ("s3", "s16")]
 
 for t in switch_pairs:
     ip1 = snet_list[snet_counter].allocateIPAddr()
@@ -269,81 +305,87 @@ for t in switch_pairs:
 for snet in snet_list:
     snet.installSubnetTable()
 
-# configure policy for edge routers
-for s in {"s0", "s1", "s2", "s3", "s8", "s9", "s10", "s15", "s16", "s17"}:
-    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community {}:1".format(as_map[s]))
-    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 20\nmatch ip address prefix-list INTERNET_PREFIX_LIST\nset community internet")
-    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 30\nmatch community OUT_AS_FILTER")
-    switch_dict[s].addRoutingConfig(configStr="route-map IN_AS_RMAP permit 10\nmatch community IN_AS_FILTER")
-    switch_dict[s].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit internet")
-    switch_dict[s].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit internet")
-    switch_dict[s].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit " + "10.0.0.0/16")
+# configure policy for admin router
+s = "s0"
+switch_dict[s].addRoutingConfig(configStr="route-map PERMIT_ADMIN_RMAP permit 10\nmatch community ALL_AS")
+switch_dict[s].addRoutingConfig(configStr="route-map DENY_ADMIN_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community 1:1")
+switch_dict[s].addRoutingConfig(configStr="route-map DENY_ADMIN_RMAP permit 20\nmatch ip address prefix-list INTERNET_PREFIX_LIST\nset community 0:1")
+switch_dict[s].addRoutingConfig(configStr="route-map DENY_ADMIN_RMAP permit 30\nmatch community ADMIN_AS")
 
-# s0 advertise and accept routes from all AS
-for i in range(1, 6):
-    switch_dict["s0"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit {}:1".format(i))
-for i in range(2, 6):
-    switch_dict["s0"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
+switch_dict[s].addRoutingConfig(configStr="ip prefix-list INTERNET_PREFIX_LIST permit 10.0.0.0/16 ge 16")
+
+switch_dict[s].addRoutingConfig(configStr="bgp community-list standard ADMIN_AS permit 1:1")
+for asn in range(0, 6):
+    switch_dict[s].addRoutingConfig(configStr="bgp community-list standard ALL_AS permit {}:1".format(asn))
+
+# configure policy for edge routers
+for s in {"s1", "s2", "s3", "s8", "s9", "s10", "s15", "s16", "s17"}:
+    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community {}:1".format(as_map[s]))
+    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 20\nmatch ip address prefix-list INTERNET_PREFIX_LIST\nset community 0:1")
+    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 30\nmatch community OUT_AS")
+    switch_dict[s].addRoutingConfig(configStr="route-map IN_AS_RMAP permit 10\nmatch community IN_AS")
+
+    switch_dict[s].addRoutingConfig(configStr="route-map PERMIT_ADMIN_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community {}:1".format(as_map[s]))
+    switch_dict[s].addRoutingConfig(configStr="route-map PERMIT_ADMIN_RMAP permit 20\nmatch ip address prefix-list INTERNET_PREFIX_LIST\nset community 0:1")
+    switch_dict[s].addRoutingConfig(configStr="route-map PERMIT_ADMIN_RMAP permit 30\nmatch community ALL_AS")
+    switch_dict[s].addRoutingConfig(configStr="route-map DENY_ADMIN_RMAP permit 10\nmatch community ADMIN_AS")
+
+    switch_dict[s].addRoutingConfig(configStr="ip prefix-list INTERNET_PREFIX_LIST permit 10.0.0.0/16 ge 16")
+
+    switch_dict[s].addRoutingConfig(configStr="bgp community-list standard IN_AS permit 0:1")
+    switch_dict[s].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit 0:1")
+    switch_dict[s].addRoutingConfig(configStr="bgp community-list standard ADMIN_AS permit 1:1")
+    for asn in range(0, 6):
+        switch_dict[s].addRoutingConfig(configStr="bgp community-list standard ALL_AS permit {}:1".format(asn))
 
 # s1 advertise and accept routes from all AS
 for i in range(1, 6):
-    switch_dict["s1"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit {}:1".format(i))
+    switch_dict["s1"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit {}:1".format(i))
 for i in range(1, 6):
-    switch_dict["s1"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
+    switch_dict["s1"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
 # s2 advertise and accept routes from all AS
 for i in range(1, 6):
-    switch_dict["s2"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit {}:1".format(i))
+    switch_dict["s2"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit {}:1".format(i))
 for i in range(1, 6):
-    switch_dict["s2"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
+    switch_dict["s2"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
 # s3 does not advertise routes from other AS and only accept routes from AS 2 and 5
-for i in range(1, 6):
-    if i != 2:
-        switch_dict["s3"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER deny {}:1".format(i))
-    else:
-        switch_dict["s3"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit {}:1".format(i))
+switch_dict["s3"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit 2:1")
 for i in {2, 5}:
-    switch_dict["s3"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
+    switch_dict["s3"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
-# s8 does not advertise routes from other AS and only accept routes from AS 1
+# s8 does not advertise routes from other AS and but accept routes from all AS
+switch_dict["s8"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit 3:1")
 for i in range(1, 6):
-    if i != 3:
-        switch_dict["s8"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER deny {}:1".format(i))
-    else:
-        switch_dict["s8"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit {}:1".format(i))
-for i in {3, 1}:
-    switch_dict["s8"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
+    switch_dict["s8"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
-# s9 advertise and accept routes from all AS
-for i in range(1, 6):
-    switch_dict["s9"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit {}:1".format(i))
-for i in range(1, 6):
-    switch_dict["s9"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
+# s9 does not advertise routes from other AS and only accept routes from AS 3 and 4
+switch_dict["s9"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit 3:1")
+for i in {3, 4}:
+    switch_dict["s9"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
 # s10 advertise and accept routes from all AS
 for i in range(1, 6):
-    switch_dict["s10"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit {}:1".format(i))
+    switch_dict["s10"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit {}:1".format(i))
 for i in range(1, 6):
-    switch_dict["s10"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
+    switch_dict["s10"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
 # s15 advertise and accept routes from all AS
 for i in range(1, 6):
-    switch_dict["s15"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit {}:1".format(i))
+    switch_dict["s15"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit {}:1".format(i))
 for i in range(1, 6):
-    switch_dict["s15"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
+    switch_dict["s15"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
-# s16 advertise and accept routes from all AS
+# s16 does not advertise routes from other AS and accept routes from all AS
+switch_dict["s16"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit 5:1")
 for i in range(1, 6):
-    switch_dict["s16"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit {}:1".format(i))
-for i in range(1, 6):
-    switch_dict["s16"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
+    switch_dict["s16"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
-# s17 advertise and accept routes from all AS
+# s17 does not advertise routes from other ASand accept routes from all AS
+switch_dict["s17"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit 5:1".format(i))
 for i in range(1, 6):
-    switch_dict["s17"].addRoutingConfig(configStr="bgp community-list standard OUT_AS_FILTER permit {}:1".format(i))
-for i in range(1, 6):
-    switch_dict["s17"].addRoutingConfig(configStr="bgp community-list standard IN_AS_FILTER permit {}:1".format(i))
+    switch_dict["s17"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
 
 info('*** AS1\n')
@@ -468,6 +510,7 @@ for s in edge_switches:
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} route-reflector-client".format(client_router_ip))
 
 for s in inner_switches:
+    switch_dict[s].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(2))
     for rr in route_reflectors:
         client_router_ip = switch_dict[s].getLoopbackIP()
         route_reflector_ip = switch_dict[rr].getLoopbackIP()
@@ -477,7 +520,6 @@ for s in inner_switches:
         switch_dict[s].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(route_reflector_ip))
         switch_dict[s].addRoutingConfig("bgpd", "neighbor {} disable-connected-check".format(route_reflector_ip))
         switch_dict[s].addRoutingConfig("bgpd", "neighbor {} route-map RMAP out".format(route_reflector_ip))
-        switch_dict[s].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(2))
 
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(client_router_ip, 2))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(client_router_ip, route_reflector_ip))
@@ -741,14 +783,18 @@ nodes.writeFile("topo.txt")
 os.system("docker cp /m/local2/wcr/Diagnosis-driver/driver.tar.bz mn.admin:/")
 os.system("docker cp /m/local2/wcr/Mininet-Emulab/topo.txt mn.admin:/")
 
+print("tar: ", host_dict["admin"].cmd("tar -xf /driver.tar.bz -C /"))
+print("install dns: ", host_dict["admin"].cmd("python3 /network_graph.py /topo.txt"))
+print("start query backend: ", host_dict["admin"].cmd("python3 /network_model.py --ribs-dir /ribs --topo /topo.txt &"))
+
 info('*** Starting network\n')
 
 for host in host_dict.values():
     host.start()
 
-for switch in switch_dict.values():
-    switch.setAdminConfig(admin_ip, fault_report_collection_port)
-    switch.start()
+for switch in switch_dict.keys():
+    switch_dict[switch].setAdminConfig(admin_ip, fault_report_collection_port)
+    switch_dict[switch].start()
 
 net.start()
 
