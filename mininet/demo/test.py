@@ -24,7 +24,7 @@ host_image = "localhost/rockylinux:v1"
 host_dict = dict()
 host_count = 0
 
-switch_image = "localhost/p4switch-frr:v8"
+switch_image = "localhost/p4switch-frr:v9"
 switch_dict = dict()
 switch_count = 0
 as_map = dict()

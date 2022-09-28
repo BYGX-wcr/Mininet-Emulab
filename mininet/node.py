@@ -1543,7 +1543,7 @@ class DockerP4Router( DockerRouter ):
         if self.rt_mediator:
             os.system("docker cp " + self.rt_mediator + " " + self.dc['Id'] + ":/tmp/rt_mediator")
 
-        # import switch_agent if path is not null
+        # import runtime api if path is not null
         if self.runtime_api:
             os.system("docker cp " + self.runtime_api + " " + self.dc['Id'] + ":/usr/local/lib/python3.5/site-packages/runtime_API.py")
 
@@ -1576,6 +1576,7 @@ class DockerP4Router( DockerRouter ):
             if debug == True:
                 self.cmd("strace -f -o /rt_mediator.strace python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log > /rt_mediator.out &")
             else:
+                print("Start rt_mediator on {} with {}".format(self.name, "python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log --report-server-ip {} --report-server-port {} > /rt_mediator.out &".format(self.adminIP, self.faultReportCollectionPort)))
                 self.cmd("python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log --report-server-ip {} --report-server-port {} > /rt_mediator.out &".format(self.adminIP, self.faultReportCollectionPort))
 
         # start switch_agent
@@ -1583,6 +1584,7 @@ class DockerP4Router( DockerRouter ):
             if debug == True:
                 self.cmd("strace -f -o /switch_agent.strace python3 /tmp/switch_agent --log-file /tmp/switch_agent.log --report-server-ip {} --report-server-port {} --port-num {} > /switch_agent.out &".format(self.adminIP, self.faultReportCollectionPort, len(self.intfs.keys())))
             else:
+                print("Start switch_agent on {} with {}".format(self.name, "python3 /tmp/switch_agent --log-file /tmp/switch_agent.log --report-server-ip {} --report-server-port {} --port-num {} > /switch_agent.out &".format(self.adminIP, self.faultReportCollectionPort, len(self.intfs.keys()))))
                 self.cmd("python3 /tmp/switch_agent --log-file /tmp/switch_agent.log --report-server-ip {} --report-server-port {} --port-num {} > /switch_agent.out &".format(self.adminIP, self.faultReportCollectionPort, len(self.intfs.keys())))
 
         super().start()

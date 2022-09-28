@@ -24,7 +24,7 @@ host_image = "localhost/rockylinux:v1"
 host_dict = dict()
 host_count = 0
 
-switch_image = "localhost/p4switch-frr:v8"
+switch_image = "localhost/p4switch-frr:v9"
 switch_dict = dict()
 switch_count = 0
 as_map = dict()
@@ -785,7 +785,7 @@ os.system("docker cp /m/local2/wcr/Mininet-Emulab/topo.txt mn.admin:/")
 
 print("tar: ", host_dict["admin"].cmd("tar -xf /driver.tar.bz -C /"))
 print("install dns: ", host_dict["admin"].cmd("python3 /network_graph.py /topo.txt"))
-print("start query backend: ", host_dict["admin"].cmd("python3 /network_model.py --ribs-dir /ribs --topo /topo.txt &"))
+print("start query backend: ", host_dict["admin"].cmd("python3 /network_model.py --ribs-dir /ribs --topo /topo.txt --fsi-dir /fsi &"))
 
 info('*** Starting network\n')
 
