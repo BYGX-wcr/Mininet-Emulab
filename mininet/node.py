@@ -1385,7 +1385,7 @@ class DockerP4Router( DockerRouter ):
         filename = "./ACL-{}.txt".format(self.name)
         with open(filename, "w", encoding="utf-8") as file:
             # write ACL commands into the file
-            print("ACL n {}: {}".format(self.name, self.aclConfig))
+            print("ACL on {}: {}".format(self.name, self.aclConfig))
             for entry in self.aclConfig:
                 file.write("table_add Filter_ACL acl_drop " + " ".join(entry) + " => 1\n")
 
