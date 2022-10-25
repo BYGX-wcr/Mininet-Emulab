@@ -20,7 +20,7 @@ admin_ip = ""
 fault_report_collection_port = 9024
 
 info('*** Adding docker containers\n')
-host_image = "localhost/rockylinux:v1"
+host_image = "localhost/rockylinux:v2"
 host_dict = dict()
 host_count = 0
 
@@ -37,7 +37,7 @@ for i in range(0, 2):
     host_count += 1
 
 # admin
-host_dict['admin'] = net.addDocker('admin', dimage=switch_image)
+host_dict['admin'] = net.addDocker('admin', dimage=host_image)
 
 # s0 s1 s2
 for i in range(0, 3):
@@ -51,6 +51,7 @@ for i in range(0, 3):
                          rt_mediator= "/m/local2/wcr/P4-Switches/rt_mediator.py",
                          runtime_api= "/m/local2/wcr/P4-Switches/runtime_API.py",
                          switch_agent= "/m/local2/wcr/P4-Switches/switch_agent.py",
+                         packet_injector= "/m/local2/wcr/P4-Switches/packet_injector.py",
                          bgpd='yes',
                          ospfd='yes')
     as_map['s{}'.format(switch_count)] = i + 1
@@ -120,27 +121,27 @@ for s in {"s0", "s1", "s2"}:
     switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community {}:1".format(as_map[s]))
     switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 20\nmatch ip address prefix-list INTERNET_PREFIX_LIST\nset community 0:1")
     switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 30\nmatch community OUT_AS")
-    switch_dict[s].addRoutingConfig(configStr="route-map IN_AS_RMAP permit 10\nmatch community IN_AS")
+    switch_dict[s].addRoutingConfig(configStr="route-map IN_AS_RMAP permit 20\nmatch community IN_AS\nset community {}:1".format(as_map[s]))
     switch_dict[s].addRoutingConfig(configStr="bgp community-list standard IN_AS permit 0:1")
     switch_dict[s].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit 0:1")
     switch_dict[s].addRoutingConfig(configStr="ip prefix-list INTERNET_PREFIX_LIST permit 10.0.0.0/16 ge 16")
 
 # s0 advertise and accept routes from all AS
-for i in range(1, 6):
+for i in {1, 2, 3}:
     switch_dict["s0"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit {}:1".format(i))
-for i in range(1, 6):
+for i in {1, 2, 3}:
     switch_dict["s0"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
 # s1 advertise and accept routes from all AS
-for i in range(1, 6):
+for i in {1, 2, 3}:
     switch_dict["s1"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit {}:1".format(i))
-for i in range(1, 6):
+for i in {1, 2, 3}:
     switch_dict["s1"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
 # s2 advertise and accept routes from all AS
-for i in range(1, 6):
+for i in {1, 2, 3}:
     switch_dict["s2"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit {}:1".format(i))
-for i in range(1, 6):
+for i in {1, 3}:
     switch_dict["s2"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
 info('*** AS1\n')

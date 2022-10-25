@@ -1323,6 +1323,7 @@ class DockerP4Router( DockerRouter ):
                  rt_mediator = None,
                  runtime_api = None,
                  switch_agent = None,
+                 packet_injector = None,
                  bgp_adv_modifier = None,
                  **kwargs):
         DockerRouter.__init__(self, name, **kwargs)
@@ -1344,6 +1345,7 @@ class DockerP4Router( DockerRouter ):
         self.runtime_api = runtime_api
         self.bgp_adv_modifier = bgp_adv_modifier
         self.switch_agent = switch_agent
+        self.packet_injector = packet_injector
         self.cpu_input_port = cpu_input_port
         self.cpu_output_port = cpu_output_port
 
@@ -1550,6 +1552,10 @@ class DockerP4Router( DockerRouter ):
         # import switch_agent if path is not null
         if self.switch_agent:
             os.system("docker cp " + self.switch_agent + " " + self.dc['Id'] + ":/tmp/switch_agent")
+
+        # import packet_injector if path is not null
+        if self.packet_injector:
+            os.system("docker cp " + self.packet_injector + " " + self.dc['Id'] + ":/tmp/packet_injector")
 
         # import bgp_adv_modifier if path is not null
         if self.bgp_adv_modifier:

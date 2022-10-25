@@ -20,7 +20,7 @@ admin_ip = ""
 fault_report_collection_port = 9024
 
 info('*** Adding docker containers\n')
-host_image = "localhost/rockylinux:v1"
+host_image = "localhost/rockylinux:v2"
 host_dict = dict()
 host_count = 0
 
@@ -39,7 +39,7 @@ for i in range(0, 1):
     host_count += 1
 
 # admin
-host_dict['admin'] = net.addDocker('admin', dimage=switch_image)
+host_dict['admin'] = net.addDocker('admin', dimage=host_image)
 
 # s0
 for i in range(0, 1):

@@ -143,11 +143,11 @@ class NodeList:
 
     def addLink(self, name1, name2, ip1, ip2):
         port1 = self.nodeDict[name1][0]
-        self.nodeDict[name1].append("{}-{}-{}".format(port1, ip1.split("/")[0], name2))
+        self.nodeDict[name1].append("{}-{}-{}".format(port1, ip1, name2))
         self.nodeDict[name1][0] += 1
 
         port2 = self.nodeDict[name2][0]
-        self.nodeDict[name2].append("{}-{}-{}".format(port2, ip2.split("/")[0], name1))
+        self.nodeDict[name2].append("{}-{}-{}".format(port2, ip2, name1))
         self.nodeDict[name2][0] += 1
 
     def writeFile(self, filepath):
