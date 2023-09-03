@@ -17,14 +17,16 @@ setLogLevel('info')
 net = Containernet(controller=Controller)
 nodes = NodeList() # used for generating topology file
 admin_ip = ""
+pingmesh_admin_ip = ""
 fault_report_collection_port = 9024
+trouble_report_collection_port = 9026
 
 info('*** Adding docker containers\n')
 host_image = "localhost/rockylinux:v2"
 host_dict = dict()
 host_count = 0
 
-switch_image = "localhost/p4switch-frr:v9"
+switch_image = "localhost/p4switch-frr:v11"
 switch_dict = dict()
 switch_count = 0
 as_map = dict()
@@ -33,13 +35,15 @@ info('*** AS 1 (with admin host)\n')
 
 # d0
 for i in range(0, 1):
-    new_host = net.addDocker('d{}'.format(host_count), dimage=host_image)
+    new_host = net.addDocker('d{}'.format(host_count), cls=DockerPingHost, dimage=host_image, monitor="/m/local2/wcr/Diagnosis-driver/pingmesh_client.py")
     as_map['d{}'.format(host_count)] = 1
     host_dict['d{}'.format(host_count)] = new_host
+    nodes.addNode(new_host.name, lanIp=new_host.getLANIp(), nodeType="host")
     host_count += 1
 
 # admin
-host_dict['admin'] = net.addDocker('admin', dimage=host_image)
+host_dict['admin'] = net.addDocker('admin', cls=DockerPingHost, dimage="localhost/admin-host:v1", monitor="/m/local2/wcr/Diagnosis-driver/pingmesh_client.py")
+nodes.addNode(host_dict['admin'].name, lanIp=host_dict['admin'].getLANIp(), nodeType="host")
 
 # s0
 for i in range(0, 1):
@@ -53,11 +57,14 @@ for i in range(0, 1):
                          rt_mediator= "/m/local2/wcr/P4-Switches/rt_mediator.py",
                          runtime_api= "/m/local2/wcr/P4-Switches/runtime_API.py",
                          switch_agent= "/m/local2/wcr/P4-Switches/switch_agent.py",
+                         packet_injector= "/m/local2/wcr/P4-Switches/packet_injector.py",
+                         bgp_adv_modifier= "/m/local2/wcr/P4-Switches/bgp_adv_modify.o",
                          bgpd='yes',
                          ospfd='yes')
     as_map['s{}'.format(switch_count)] = 1
     switch_dict['s{}'.format(switch_count)] = new_switch
     switch_count += 1
+    nodes.addNode(new_switch.name, lanIp=new_switch.getLANIp(), loopbackIp=new_switch.getLoopbackIP(), nodeType="switch")
 
     new_switch.addRoutingConfig(configStr="log file /tmp/frr.log debugging")
     new_switch.addRoutingConfig(configStr="debug bgp neighbor-events")
@@ -66,7 +73,8 @@ for i in range(0, 1):
     new_switch.addRoutingConfig(configStr="debug zebra dplane detailed")
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=1))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
-    # new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
+    new_switch.addRoutingConfig("bgpd", "network {}/32".format(new_switch.getLoopbackIP()))
+    new_switch.addRoutingConfig("bgpd", "redistribute ospf")
     new_switch.addRoutingConfig("ospfd", "router ospf")
     new_switch.addRoutingConfig("ospfd", "ospf router-id " + new_switch.getLoopbackIP())
 
@@ -74,9 +82,10 @@ info('*** AS 2\n')
 
 # d1 d2
 for i in range(0, 2):
-    new_host = net.addDocker('d{}'.format(host_count), dimage=host_image)
+    new_host = net.addDocker('d{}'.format(host_count), cls=DockerPingHost, dimage=host_image, monitor="/m/local2/wcr/Diagnosis-driver/pingmesh_client.py")
     as_map['d{}'.format(host_count)] = 2
     host_dict['d{}'.format(host_count)] = new_host
+    nodes.addNode(new_host.name, lanIp=new_host.getLANIp(), nodeType="host")
     host_count += 1
 
 # s1 s2 s3 s4 s5 s6 s7
@@ -91,11 +100,14 @@ for i in range(0, 7):
                          rt_mediator= "/m/local2/wcr/P4-Switches/rt_mediator.py",
                          runtime_api= "/m/local2/wcr/P4-Switches/runtime_API.py",
                          switch_agent= "/m/local2/wcr/P4-Switches/switch_agent.py",
+                         packet_injector= "/m/local2/wcr/P4-Switches/packet_injector.py",
+                         bgp_adv_modifier= "/m/local2/wcr/P4-Switches/bgp_adv_modify.o",
                          bgpd='yes',
                          ospfd='yes')
     as_map['s{}'.format(switch_count)] = 2
     switch_dict['s{}'.format(switch_count)] = new_switch
     switch_count += 1
+    nodes.addNode(new_switch.name, lanIp=new_switch.getLANIp(), loopbackIp=new_switch.getLoopbackIP(), nodeType="switch")
 
     new_switch.addRoutingConfig(configStr="log file /tmp/frr.log debugging")
     new_switch.addRoutingConfig(configStr="debug bgp neighbor-events")
@@ -104,7 +116,8 @@ for i in range(0, 7):
     new_switch.addRoutingConfig(configStr="debug zebra dplane detailed")
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=2))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
-    # new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
+    new_switch.addRoutingConfig("bgpd", "network {}/32".format(new_switch.getLoopbackIP()))
+    new_switch.addRoutingConfig("bgpd", "redistribute ospf")
     new_switch.addRoutingConfig("ospfd", "router ospf")
     new_switch.addRoutingConfig("ospfd", "ospf router-id " + new_switch.getLoopbackIP())
 
@@ -112,9 +125,10 @@ info('*** AS 3\n')
 
 # d3 d4
 for i in range(0, 2):
-    new_host = net.addDocker('d{}'.format(host_count), dimage=host_image)
+    new_host = net.addDocker('d{}'.format(host_count), cls=DockerPingHost, dimage=host_image, monitor="/m/local2/wcr/Diagnosis-driver/pingmesh_client.py")
     as_map['d{}'.format(host_count)] = 3
     host_dict['d{}'.format(host_count)] = new_host
+    nodes.addNode(new_host.name, lanIp=new_host.getLANIp(), nodeType="host")
     host_count += 1
 
 # s8 s9 s10 s11 s12 s13 s14
@@ -129,11 +143,14 @@ for i in range(0, 7):
                          rt_mediator= "/m/local2/wcr/P4-Switches/rt_mediator.py",
                          runtime_api= "/m/local2/wcr/P4-Switches/runtime_API.py",
                          switch_agent= "/m/local2/wcr/P4-Switches/switch_agent.py",
+                         packet_injector= "/m/local2/wcr/P4-Switches/packet_injector.py",
+                         bgp_adv_modifier= "/m/local2/wcr/P4-Switches/bgp_adv_modify.o",
                          bgpd='yes',
                          ospfd='yes')
     as_map['s{}'.format(switch_count)] = 3
     switch_dict['s{}'.format(switch_count)] = new_switch
     switch_count += 1
+    nodes.addNode(new_switch.name, lanIp=new_switch.getLANIp(), loopbackIp=new_switch.getLoopbackIP(), nodeType="switch")
 
     new_switch.addRoutingConfig(configStr="log file /tmp/frr.log debugging")
     new_switch.addRoutingConfig(configStr="debug bgp neighbor-events")
@@ -142,7 +159,8 @@ for i in range(0, 7):
     new_switch.addRoutingConfig(configStr="debug zebra dplane detailed")
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=3))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
-    # new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
+    new_switch.addRoutingConfig("bgpd", "network {}/32".format(new_switch.getLoopbackIP()))
+    new_switch.addRoutingConfig("bgpd", "redistribute ospf")
     new_switch.addRoutingConfig("ospfd", "router ospf")
     new_switch.addRoutingConfig("ospfd", "ospf router-id " + new_switch.getLoopbackIP())
 
@@ -150,9 +168,10 @@ info('*** AS 4\n')
 
 # d5
 for i in range(0, 1):
-    new_host = net.addDocker('d{}'.format(host_count), dimage=host_image)
+    new_host = net.addDocker('d{}'.format(host_count), cls=DockerPingHost, dimage=host_image, monitor="/m/local2/wcr/Diagnosis-driver/pingmesh_client.py")
     as_map['d{}'.format(host_count)] = 4
     host_dict['d{}'.format(host_count)] = new_host
+    nodes.addNode(new_host.name, lanIp=new_host.getLANIp(), nodeType="host")
     host_count += 1
 
 # s15
@@ -167,11 +186,14 @@ for i in range(0, 1):
                          rt_mediator= "/m/local2/wcr/P4-Switches/rt_mediator.py",
                          runtime_api= "/m/local2/wcr/P4-Switches/runtime_API.py",
                          switch_agent= "/m/local2/wcr/P4-Switches/switch_agent.py",
+                         packet_injector= "/m/local2/wcr/P4-Switches/packet_injector.py",
+                         bgp_adv_modifier= "/m/local2/wcr/P4-Switches/bgp_adv_modify.o",
                          bgpd='yes',
                          ospfd='yes')
     as_map['s{}'.format(switch_count)] = 4
     switch_dict['s{}'.format(switch_count)] = new_switch
     switch_count += 1
+    nodes.addNode(new_switch.name, lanIp=new_switch.getLANIp(), loopbackIp=new_switch.getLoopbackIP(), nodeType="switch")
 
     new_switch.addRoutingConfig(configStr="log file /tmp/frr.log debugging")
     new_switch.addRoutingConfig(configStr="debug bgp neighbor-events")
@@ -180,7 +202,8 @@ for i in range(0, 1):
     new_switch.addRoutingConfig(configStr="debug zebra dplane detailed")
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=4))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
-    # new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
+    new_switch.addRoutingConfig("bgpd", "network {}/32".format(new_switch.getLoopbackIP()))
+    new_switch.addRoutingConfig("bgpd", "redistribute ospf")
     new_switch.addRoutingConfig("ospfd", "router ospf")
     new_switch.addRoutingConfig("ospfd", "ospf router-id " + new_switch.getLoopbackIP())
 
@@ -188,9 +211,10 @@ info('*** AS 5\n')
 
 # d6 d7
 for i in range(0, 2):
-    new_host = net.addDocker('d{}'.format(host_count), dimage=host_image)
+    new_host = net.addDocker('d{}'.format(host_count), cls=DockerPingHost, dimage=host_image, monitor="/m/local2/wcr/Diagnosis-driver/pingmesh_client.py")
     as_map['d{}'.format(host_count)] = 5
     host_dict['d{}'.format(host_count)] = new_host
+    nodes.addNode(new_host.name, lanIp=new_host.getLANIp(), nodeType="host")
     host_count += 1
 
 # s16 s17 s18 s19
@@ -205,11 +229,14 @@ for i in range(0, 4):
                          rt_mediator= "/m/local2/wcr/P4-Switches/rt_mediator.py",
                          runtime_api= "/m/local2/wcr/P4-Switches/runtime_API.py",
                          switch_agent= "/m/local2/wcr/P4-Switches/switch_agent.py",
+                         packet_injector= "/m/local2/wcr/P4-Switches/packet_injector.py",
+                         bgp_adv_modifier= "/m/local2/wcr/P4-Switches/bgp_adv_modify.o",
                          bgpd='yes',
                          ospfd='yes')
     as_map['s{}'.format(switch_count)] = 5
     switch_dict['s{}'.format(switch_count)] = new_switch
     switch_count += 1
+    nodes.addNode(new_switch.name, lanIp=new_switch.getLANIp(), loopbackIp=new_switch.getLoopbackIP(), nodeType="switch")
 
     new_switch.addRoutingConfig(configStr="log file /tmp/frr.log debugging")
     new_switch.addRoutingConfig(configStr="debug bgp neighbor-events")
@@ -218,7 +245,8 @@ for i in range(0, 4):
     new_switch.addRoutingConfig(configStr="debug zebra dplane detailed")
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=5))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
-    # new_switch.addRoutingConfig("bgpd", "no bgp ebgp-requires-policy")
+    new_switch.addRoutingConfig("bgpd", "network {}/32".format(new_switch.getLoopbackIP()))
+    new_switch.addRoutingConfig("bgpd", "redistribute ospf")
     new_switch.addRoutingConfig("ospfd", "router ospf")
     new_switch.addRoutingConfig("ospfd", "ospf router-id " + new_switch.getLoopbackIP())
 
@@ -246,20 +274,21 @@ for t in admin_pairs:
     link = net.addLink(switch_dict[index1], switch_dict[index2], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
     snet_list[snet_counter].addNode(switch_dict[index1], switch_dict[index2])
 
-    nodes.addNode(switch_dict[index1].name, ip=switch_dict[index1].getLoopbackIP(), nodeType="switch")
-    nodes.addNode(switch_dict[index2].name, ip=switch_dict[index2].getLoopbackIP(), nodeType="switch")
     nodes.addLink(switch_dict[index1].name, switch_dict[index2].name, ip1=ip1, ip2=ip2)
 
     # configure eBGP peers
     switch_dict[index1].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(ip2.split("/")[0], as_map[index2]))
     switch_dict[index1].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(ip2.split("/")[0]))
-    switch_dict[index1].addRoutingConfig("bgpd", "neighbor {} route-map DENY_ADMIN_RMAP out".format(ip2.split("/")[0]))
-    switch_dict[index1].addRoutingConfig("bgpd", "neighbor {} route-map PERMIT_ADMIN_RMAP in".format(ip2.split("/")[0]))
+    switch_dict[index1].addRoutingConfig("bgpd", "neighbor {} route-map ONLY_ADMIN_RMAP out".format(ip2.split("/")[0]))
+    switch_dict[index1].addRoutingConfig("bgpd", "neighbor {} route-map PERMIT_ALL_RMAP in".format(ip2.split("/")[0]))
 
     switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(ip1.split("/")[0], as_map[index1]))
     switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(ip1.split("/")[0]))
-    switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} route-map PERMIT_ADMIN_RMAP out".format(ip1.split("/")[0]))
-    switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} route-map DENY_ADMIN_RMAP in".format(ip1.split("/")[0]))
+    switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} route-map ONLY_AS_RMAP out".format(ip1.split("/")[0]))
+    switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} route-map ONLY_ADMIN_RMAP in".format(ip1.split("/")[0]))
+
+    switch_dict[index1].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(ip2.split("/")[0]))
+    switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(ip1.split("/")[0]))
 
     # add new advertised network prefix
     switch_dict[index1].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
@@ -281,8 +310,6 @@ for t in switch_pairs:
     link = net.addLink(switch_dict[index1], switch_dict[index2], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
     snet_list[snet_counter].addNode(switch_dict[index1], switch_dict[index2])
 
-    nodes.addNode(switch_dict[index1].name, ip=switch_dict[index1].getLoopbackIP(), nodeType="switch")
-    nodes.addNode(switch_dict[index2].name, ip=switch_dict[index2].getLoopbackIP(), nodeType="switch")
     nodes.addLink(switch_dict[index1].name, switch_dict[index2].name, ip1=ip1, ip2=ip2)
 
     # configure eBGP peers
@@ -296,6 +323,9 @@ for t in switch_pairs:
     switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} route-map OUT_AS_RMAP out".format(ip1.split("/")[0]))
     switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} route-map IN_AS_RMAP in".format(ip1.split("/")[0]))
 
+    switch_dict[index1].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(ip2.split("/")[0]))
+    switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(ip1.split("/")[0]))
+
     # add new advertised network prefix
     switch_dict[index1].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
     switch_dict[index2].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
@@ -307,33 +337,46 @@ for snet in snet_list:
 
 # configure policy for admin router
 s = "s0"
-switch_dict[s].addRoutingConfig(configStr="route-map PERMIT_ADMIN_RMAP permit 10\nmatch community ALL_AS")
-switch_dict[s].addRoutingConfig(configStr="route-map DENY_ADMIN_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community 1:1")
-switch_dict[s].addRoutingConfig(configStr="route-map DENY_ADMIN_RMAP permit 20\nmatch ip address prefix-list INTERNET_PREFIX_LIST\nset community 0:1")
-switch_dict[s].addRoutingConfig(configStr="route-map DENY_ADMIN_RMAP permit 30\nmatch community ADMIN_AS")
+switch_dict[s].addRoutingConfig(configStr="route-map PERMIT_ALL_RMAP permit 10\nmatch community ALL_AS")
+switch_dict[s].addRoutingConfig(configStr="route-map ONLY_ADMIN_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community 1:1")
+switch_dict[s].addRoutingConfig(configStr="route-map ONLY_ADMIN_RMAP permit 20\nmatch ip address prefix-list INTERNET_PREFIX_LIST\nset community 0:1")
+switch_dict[s].addRoutingConfig(configStr="route-map ONLY_ADMIN_RMAP permit 30\nmatch ip address prefix-list LB_PREFIX_LIST\nset community 0:1")
+switch_dict[s].addRoutingConfig(configStr="route-map ONLY_ADMIN_RMAP permit 40\nmatch community ADMIN_AS")
 
+switch_dict[s].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit 10.1.0.0/16 ge 16")
 switch_dict[s].addRoutingConfig(configStr="ip prefix-list INTERNET_PREFIX_LIST permit 10.0.0.0/16 ge 16")
+switch_dict[s].addRoutingConfig(configStr="ip prefix-list LB_PREFIX_LIST permit 192.168.19.0/24  ge 24")
 
+switch_dict[s].addRoutingConfig(configStr="bgp community-list standard ADMIN_AS permit 0:1")
 switch_dict[s].addRoutingConfig(configStr="bgp community-list standard ADMIN_AS permit 1:1")
 for asn in range(0, 6):
     switch_dict[s].addRoutingConfig(configStr="bgp community-list standard ALL_AS permit {}:1".format(asn))
 
 # configure policy for edge routers
 for s in {"s1", "s2", "s3", "s8", "s9", "s10", "s15", "s16", "s17"}:
+    switch_dict[s].addRoutingConfig(configStr="route-map ONLY_AS_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community {}:1".format(as_map[s]))
+    switch_dict[s].addRoutingConfig(configStr="route-map ONLY_AS_RMAP permit 20\nmatch ip address prefix-list INTERNET_PREFIX_LIST\nset community 0:1")
+    switch_dict[s].addRoutingConfig(configStr="route-map ONLY_AS_RMAP permit 30\nmatch ip address prefix-list LB_PREFIX_LIST\nset community 0:1")
+
     switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community {}:1".format(as_map[s]))
     switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 20\nmatch ip address prefix-list INTERNET_PREFIX_LIST\nset community 0:1")
-    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 30\nmatch community OUT_AS")
+    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 30\nmatch ip address prefix-list LB_PREFIX_LIST\nset community 0:1")
+    switch_dict[s].addRoutingConfig(configStr="route-map OUT_AS_RMAP permit 40\nmatch community OUT_AS")
     switch_dict[s].addRoutingConfig(configStr="route-map IN_AS_RMAP permit 10\nmatch community IN_AS")
 
-    switch_dict[s].addRoutingConfig(configStr="route-map PERMIT_ADMIN_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community {}:1".format(as_map[s]))
-    switch_dict[s].addRoutingConfig(configStr="route-map PERMIT_ADMIN_RMAP permit 20\nmatch ip address prefix-list INTERNET_PREFIX_LIST\nset community 0:1")
-    switch_dict[s].addRoutingConfig(configStr="route-map PERMIT_ADMIN_RMAP permit 30\nmatch community ALL_AS")
-    switch_dict[s].addRoutingConfig(configStr="route-map DENY_ADMIN_RMAP permit 10\nmatch community ADMIN_AS")
+    switch_dict[s].addRoutingConfig(configStr="route-map PERMIT_ALL_RMAP permit 10\nmatch ip address prefix-list AS_PREFIX_LIST\nset community {}:1".format(as_map[s]))
+    switch_dict[s].addRoutingConfig(configStr="route-map PERMIT_ALL_RMAP permit 20\nmatch ip address prefix-list INTERNET_PREFIX_LIST\nset community 0:1")
+    switch_dict[s].addRoutingConfig(configStr="route-map PERMIT_ALL_RMAP permit 30\nmatch ip address prefix-list LB_PREFIX_LIST\nset community 0:1")
+    switch_dict[s].addRoutingConfig(configStr="route-map PERMIT_ALL_RMAP permit 40\nmatch community ALL_AS")
+    switch_dict[s].addRoutingConfig(configStr="route-map ONLY_ADMIN_RMAP permit 10\nmatch community ADMIN_AS")
 
+    switch_dict[s].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit 10.{}.0.0/16 ge 16".format(as_map[s]))
     switch_dict[s].addRoutingConfig(configStr="ip prefix-list INTERNET_PREFIX_LIST permit 10.0.0.0/16 ge 16")
+    switch_dict[s].addRoutingConfig(configStr="ip prefix-list LB_PREFIX_LIST permit 192.168.19.0/24  ge 24")
 
     switch_dict[s].addRoutingConfig(configStr="bgp community-list standard IN_AS permit 0:1")
     switch_dict[s].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit 0:1")
+    switch_dict[s].addRoutingConfig(configStr="bgp community-list standard ADMIN_AS permit 0:1")
     switch_dict[s].addRoutingConfig(configStr="bgp community-list standard ADMIN_AS permit 1:1")
     for asn in range(0, 6):
         switch_dict[s].addRoutingConfig(configStr="bgp community-list standard ALL_AS permit {}:1".format(asn))
@@ -344,8 +387,8 @@ for i in range(1, 6):
 for i in range(1, 6):
     switch_dict["s1"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
-# s2 advertise and accept routes from all AS
-for i in range(1, 6):
+# s2 only advertise routes from AS 2 and 5, but accept routes from all AS
+for i in {2, 5}:
     switch_dict["s2"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit {}:1".format(i))
 for i in range(1, 6):
     switch_dict["s2"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
@@ -355,14 +398,14 @@ switch_dict["s3"].addRoutingConfig(configStr="bgp community-list standard OUT_AS
 for i in {2, 5}:
     switch_dict["s3"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
-# s8 does not advertise routes from other AS and but accept routes from all AS
+# s8 does not advertise routes from other AS but accept routes from all AS
 switch_dict["s8"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit 3:1")
 for i in range(1, 6):
     switch_dict["s8"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
-# s9 does not advertise routes from other AS and only accept routes from AS 3 and 4
+# s9 does not advertise routes from other AS but accept routes from all AS
 switch_dict["s9"].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit 3:1")
-for i in {3, 4}:
+for i in range(1, 6):
     switch_dict["s9"].addRoutingConfig(configStr="bgp community-list standard IN_AS permit {}:1".format(i))
 
 # s10 advertise and accept routes from all AS
@@ -408,18 +451,18 @@ for t in hs_pairs:
 
     ip1 = snet_list[snet_counter].allocateIPAddr()
     ip2 = snet_list[snet_counter].allocateIPAddr()
-    net.addLink(switch_dict[sid], host_dict[hid], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+    link = net.addLink(switch_dict[sid], host_dict[hid], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+    switch_dict[sid].addRoutingConfig(configStr="interface {}\nip ospf hello-interval 5\nip ospf dead-interval 20\n".format(link.intf1.name))
+
     snet_list[snet_counter].addNode(switch_dict[sid])
     switch_dict[sid].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
 
     host_dict[hid].setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 
-    nodes.addNode(host_dict[hid].name, ip=ip2, nodeType="host")
     nodes.addLink(switch_dict[sid].name, host_dict[hid].name, ip1, ip2)
 
     # add a new advertised network prefix for the AS
     switch_dict[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
-    switch_dict[sid].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit " + snet_list[snet_counter].getNetworkPrefix())
 
     snet_counter += 1
 
@@ -431,22 +474,39 @@ hid = "admin"
 ip1 = snet_list[snet_counter].allocateIPAddr()
 ip2 = snet_list[snet_counter].allocateIPAddr()
 net.addLink(switch_dict[sid], host_dict[hid], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+switch_dict[sid].addRoutingConfig(configStr="interface {}\nip ospf hello-interval 5\nip ospf dead-interval 20\n".format(link.intf1.name))
 snet_list[snet_counter].addNode(switch_dict[sid])
 switch_dict[sid].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
 
 host_dict[hid].setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 
-nodes.addNode(host_dict[hid].name, ip=ip2, nodeType="host")
 nodes.addLink(switch_dict[sid].name, host_dict[hid].name, ip1, ip2)
-
-# add a new advertised network prefix for the AS
 switch_dict[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
-switch_dict[sid].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit " + snet_list[snet_counter].getNetworkPrefix())
-
-# set up admin_ip
-admin_ip = ip2.split("/")[0]
 
 snet_counter += 1
+
+## set up admin_ip
+admin_ip = ip2.split("/")[0]
+
+# configure the backup interface of the admin host
+
+ip1 = snet_list[snet_counter].allocateIPAddr()
+ip2 = snet_list[snet_counter].allocateIPAddr()
+net.addLink(switch_dict[sid], host_dict[hid], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+switch_dict[sid].addRoutingConfig(configStr="interface {}\nip ospf hello-interval 5\nip ospf dead-interval 20\n".format(link.intf1.name))
+snet_list[snet_counter].addNode(switch_dict[sid])
+switch_dict[sid].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
+
+nodes.addLink(switch_dict[sid].name, host_dict[hid].name, ip1, ip2)
+switch_dict[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
+host_dict[hid].cmd("ip route add {subnet} dev {host}-eth1 src {intfIP} table 1".format(host=hid, intfIP=ip2.split("/")[0], subnet=snet_list[snet_counter].getNetworkPrefix()))
+host_dict[hid].cmd("ip route add default via {gwIP} table 1".format(gwIP=ip1.split("/")[0]))
+host_dict[hid].cmd("ip rule add from {intfIP} table 1".format(intfIP=ip2.split("/")[0]))
+host_dict[hid].cmd("ip rule add to {intfIP} table 1".format(intfIP=ip2.split("/")[0]))
+
+## set up pingmesh admin_ip
+pingmesh_admin_ip = host_dict["admin"].getLANIp()
+print("Admin IP: switch-{}, pingmesh-{}".format(admin_ip, pingmesh_admin_ip))
 
 for snet in snet_list:
     snet.installSubnetTable()
@@ -475,6 +535,8 @@ for t in switch_pairs:
     ip1 = snet_list[snet_counter].allocateIPAddr()
     ip2 = snet_list[snet_counter].allocateIPAddr()
     link = net.addLink(switch_dict[index1], switch_dict[index2], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+    switch_dict[index1].addRoutingConfig(configStr="interface {}\nip ospf hello-interval 5\nip ospf dead-interval 20\n".format(link.intf1.name))
+    switch_dict[index2].addRoutingConfig(configStr="interface {}\nip ospf hello-interval 5\nip ospf dead-interval 20\n".format(link.intf2.name))
     snet_list[snet_counter].addNode(switch_dict[index1], switch_dict[index2])
 
     # config IGP routing, using OSPF
@@ -483,13 +545,9 @@ for t in switch_pairs:
     switch_dict[index2].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
     switch_dict[index2].addRoutingConfig("ospfd", "network " + switch_dict[index2].getLoopbackIP() + "/32" + " area {}".format(0))
 
-    nodes.addNode(switch_dict[index1].name, ip=switch_dict[index1].getLoopbackIP(), nodeType="switch")
-    nodes.addNode(switch_dict[index2].name, ip=switch_dict[index2].getLoopbackIP(), nodeType="switch")
     nodes.addLink(switch_dict[index1].name, switch_dict[index2].name, ip1=ip1, ip2=ip2)
-
-    for s in edge_switches:
-        switch_dict[s].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
-        switch_dict[s].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit " + snet_list[snet_counter].getNetworkPrefix())
+    switch_dict[index1].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
+    switch_dict[index2].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 
     snet_counter += 1
 
@@ -509,6 +567,9 @@ for s in edge_switches:
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(client_router_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} route-reflector-client".format(client_router_ip))
 
+        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(route_reflector_ip))
+        switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(client_router_ip))
+
 for s in inner_switches:
     switch_dict[s].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(2))
     for rr in route_reflectors:
@@ -527,6 +588,9 @@ for s in inner_switches:
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} disable-connected-check".format(client_router_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} route-reflector-client".format(client_router_ip))
 
+        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(route_reflector_ip))
+        switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(client_router_ip))
+
 # configure host-switch links
 
 hs_pairs = [("s6", "d1"), ("s7", "d2")]
@@ -537,16 +601,14 @@ for t in hs_pairs:
     ip1 = snet_list[snet_counter].allocateIPAddr()
     ip2 = snet_list[snet_counter].allocateIPAddr()
     net.addLink(switch_dict[sid], host_dict[hid], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+    switch_dict[sid].addRoutingConfig(configStr="interface {}\nip ospf hello-interval 5\nip ospf dead-interval 20\n".format(link.intf1.name))
+
     snet_list[snet_counter].addNode(switch_dict[sid])
     switch_dict[sid].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
 
     host_dict[hid].setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 
-    nodes.addNode(host_dict[hid].name, ip=ip2, nodeType="host")
     nodes.addLink(switch_dict[sid].name, host_dict[hid].name, ip1, ip2)
-
-    # add a new advertised network prefix for the AS
-    switch_dict[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 
     snet_counter += 1
 
@@ -577,6 +639,8 @@ for t in switch_pairs:
     ip1 = snet_list[snet_counter].allocateIPAddr()
     ip2 = snet_list[snet_counter].allocateIPAddr()
     link = net.addLink(switch_dict[index1], switch_dict[index2], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+    switch_dict[index1].addRoutingConfig(configStr="interface {}\nip ospf hello-interval 5\nip ospf dead-interval 20\n".format(link.intf1.name))
+    switch_dict[index2].addRoutingConfig(configStr="interface {}\nip ospf hello-interval 5\nip ospf dead-interval 20\n".format(link.intf2.name))
     snet_list[snet_counter].addNode(switch_dict[index1], switch_dict[index2])
 
     # config IGP routing, using OSPF
@@ -585,13 +649,9 @@ for t in switch_pairs:
     switch_dict[index2].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
     switch_dict[index2].addRoutingConfig("ospfd", "network " + switch_dict[index2].getLoopbackIP() + "/32" + " area {}".format(0))
 
-    nodes.addNode(switch_dict[index1].name, ip=switch_dict[index1].getLoopbackIP(), nodeType="switch")
-    nodes.addNode(switch_dict[index2].name, ip=switch_dict[index2].getLoopbackIP(), nodeType="switch")
     nodes.addLink(switch_dict[index1].name, switch_dict[index2].name, ip1=ip1, ip2=ip2)
-
-    for s in edge_switches:
-        switch_dict[s].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
-        switch_dict[s].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit " + snet_list[snet_counter].getNetworkPrefix())
+    switch_dict[index1].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
+    switch_dict[index2].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 
     snet_counter += 1
 
@@ -611,7 +671,11 @@ for s in edge_switches:
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(client_router_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} route-reflector-client".format(client_router_ip))
 
+        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(route_reflector_ip))
+        switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(client_router_ip))
+
 for s in inner_switches:
+    switch_dict[s].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(3))
     for rr in route_reflectors:
         client_router_ip = switch_dict[s].getLoopbackIP()
         route_reflector_ip = switch_dict[rr].getLoopbackIP()
@@ -621,13 +685,15 @@ for s in inner_switches:
         switch_dict[s].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(route_reflector_ip))
         switch_dict[s].addRoutingConfig("bgpd", "neighbor {} disable-connected-check".format(route_reflector_ip))
         switch_dict[s].addRoutingConfig("bgpd", "neighbor {} route-map RMAP out".format(route_reflector_ip))
-        switch_dict[s].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(3))
 
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(client_router_ip, 3))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(client_router_ip, route_reflector_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(client_router_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} disable-connected-check".format(client_router_ip))
         switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} route-reflector-client".format(client_router_ip))
+
+        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(route_reflector_ip))
+        switch_dict[rr].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(client_router_ip))
 
 # configure host-switch links
 
@@ -639,16 +705,14 @@ for t in hs_pairs:
     ip1 = snet_list[snet_counter].allocateIPAddr()
     ip2 = snet_list[snet_counter].allocateIPAddr()
     net.addLink(switch_dict[sid], host_dict[hid], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+    switch_dict[sid].addRoutingConfig(configStr="interface {}\nip ospf hello-interval 5\nip ospf dead-interval 20\n".format(link.intf1.name))
+
     snet_list[snet_counter].addNode(switch_dict[sid])
     switch_dict[sid].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
 
     host_dict[hid].setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 
-    nodes.addNode(host_dict[hid].name, ip=ip2, nodeType="host")
     nodes.addLink(switch_dict[sid].name, host_dict[hid].name, ip1, ip2)
-
-    # add a new advertised network prefix for the AS
-    switch_dict[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 
     snet_counter += 1
 
@@ -676,17 +740,15 @@ for t in hs_pairs:
     ip1 = snet_list[snet_counter].allocateIPAddr()
     ip2 = snet_list[snet_counter].allocateIPAddr()
     net.addLink(switch_dict[sid], host_dict[hid], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+    switch_dict[sid].addRoutingConfig(configStr="interface {}\nip ospf hello-interval 5\nip ospf dead-interval 20\n".format(link.intf1.name))
+
     snet_list[snet_counter].addNode(switch_dict[sid])
     switch_dict[sid].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
 
     host_dict[hid].setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 
-    nodes.addNode(host_dict[hid].name, ip=ip2, nodeType="host")
     nodes.addLink(switch_dict[sid].name, host_dict[hid].name, ip1, ip2)
-
-    # add a new advertised network prefix for the AS
     switch_dict[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
-    switch_dict[sid].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit " + snet_list[snet_counter].getNetworkPrefix())
 
     snet_counter += 1
 
@@ -716,6 +778,8 @@ for t in switch_pairs:
     ip1 = snet_list[snet_counter].allocateIPAddr()
     ip2 = snet_list[snet_counter].allocateIPAddr()
     link = net.addLink(switch_dict[index1], switch_dict[index2], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+    switch_dict[index1].addRoutingConfig(configStr="interface {}\nip ospf hello-interval 5\nip ospf dead-interval 20\n".format(link.intf1.name))
+    switch_dict[index2].addRoutingConfig(configStr="interface {}\nip ospf hello-interval 5\nip ospf dead-interval 20\n".format(link.intf2.name))
     snet_list[snet_counter].addNode(switch_dict[index1], switch_dict[index2])
 
     # config IGP routing, using OSPF
@@ -724,32 +788,43 @@ for t in switch_pairs:
     switch_dict[index2].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
     switch_dict[index2].addRoutingConfig("ospfd", "network " + switch_dict[index2].getLoopbackIP() + "/32" + " area {}".format(0))
 
-    nodes.addNode(switch_dict[index1].name, ip=switch_dict[index1].getLoopbackIP(), nodeType="switch")
-    nodes.addNode(switch_dict[index2].name, ip=switch_dict[index2].getLoopbackIP(), nodeType="switch")
     nodes.addLink(switch_dict[index1].name, switch_dict[index2].name, ip1=ip1, ip2=ip2)
-
-    for s in edge_switches:
-        switch_dict[s].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
-        switch_dict[s].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit " + snet_list[snet_counter].getNetworkPrefix())
+    switch_dict[index1].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 
     snet_counter += 1
 
 # Configure BGP peers in the AS
+s1_ip = switch_dict["s16"].getLoopbackIP()
+s2_ip = switch_dict["s17"].getLoopbackIP()
 
-for s in edge_switches:
-    for ins in inner_switches:
-        client_router_ip = switch_dict[s].getLoopbackIP()
-        route_reflector_ip = switch_dict[ins].getLoopbackIP()
+switch_dict["s16"].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(s2_ip, 5))
+switch_dict["s16"].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(s2_ip, s1_ip))
+switch_dict["s16"].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(s2_ip))
 
-        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(route_reflector_ip, 5))
-        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(route_reflector_ip, client_router_ip))
-        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(route_reflector_ip))
+switch_dict["s17"].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(s1_ip, 5))
+switch_dict["s17"].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(s1_ip, s2_ip))
+switch_dict["s17"].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(s1_ip))
 
-        switch_dict[ins].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(client_router_ip, 5))
-        switch_dict[ins].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(client_router_ip, route_reflector_ip))
-        switch_dict[ins].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(client_router_ip))
-        switch_dict[ins].addRoutingConfig("bgpd", "neighbor {} route-map RMAP out".format(client_router_ip))
-        switch_dict[ins].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(5))
+switch_dict["s16"].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(s2_ip))
+switch_dict["s17"].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(s1_ip))
+
+for ins in inner_switches:
+    switch_dict[ins].addRoutingConfig(configStr="route-map RMAP permit 10\nset community {}:1".format(5))
+    for s in edge_switches:
+        s1_ip = switch_dict[s].getLoopbackIP()
+        s2_ip = switch_dict[ins].getLoopbackIP()
+
+        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(s2_ip, 5))
+        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(s2_ip, s1_ip))
+        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(s2_ip))
+
+        switch_dict[ins].addRoutingConfig("bgpd", "neighbor {} remote-as {}".format(s1_ip, 5))
+        switch_dict[ins].addRoutingConfig("bgpd", "neighbor {} update-source {}".format(s1_ip, s2_ip))
+        switch_dict[ins].addRoutingConfig("bgpd", "neighbor {} soft-reconfiguration inbound".format(s1_ip))
+        switch_dict[ins].addRoutingConfig("bgpd", "neighbor {} route-map RMAP out".format(s1_ip))
+
+        switch_dict[s].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(s2_ip))
+        switch_dict[ins].addRoutingConfig("bgpd", "neighbor {} timers 10 30".format(s1_ip))
 
 # configure host-switch links
 
@@ -761,16 +836,14 @@ for t in hs_pairs:
     ip1 = snet_list[snet_counter].allocateIPAddr()
     ip2 = snet_list[snet_counter].allocateIPAddr()
     net.addLink(switch_dict[sid], host_dict[hid], ip1=ip1, ip2=ip2, addr1=Subnet.ipToMac(ip1), addr2=Subnet.ipToMac(ip2))
+    switch_dict[sid].addRoutingConfig(configStr="interface {}\nip ospf hello-interval 5\nip ospf dead-interval 20\n".format(link.intf1.name))
+    
     snet_list[snet_counter].addNode(switch_dict[sid])
     switch_dict[sid].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
 
     host_dict[hid].setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 
-    nodes.addNode(host_dict[hid].name, ip=ip2, nodeType="host")
     nodes.addLink(switch_dict[sid].name, host_dict[hid].name, ip1, ip2)
-
-    # add a new advertised network prefix for the AS
-    switch_dict[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 
     snet_counter += 1
 
@@ -780,16 +853,21 @@ for snet in snet_list:
 info('*** Exp Setup\n')
 
 nodes.writeFile("topo.txt")
+nodes.writeHostList("hosts.txt")
 os.system("docker cp /m/local2/wcr/Diagnosis-driver/driver.tar.bz mn.admin:/")
 os.system("docker cp /m/local2/wcr/Mininet-Emulab/topo.txt mn.admin:/")
+os.system("docker cp /m/local2/wcr/Mininet-Emulab/hosts.txt mn.admin:/")
 
 print("tar: ", host_dict["admin"].cmd("tar -xf /driver.tar.bz -C /"))
 print("install dns: ", host_dict["admin"].cmd("python3 /network_graph.py /topo.txt"))
-print("start query backend: ", host_dict["admin"].cmd("python3 /network_model.py --ribs-dir /ribs --topo /topo.txt --fsi-dir /fsi &"))
+print("start batfish server: ", host_dict["admin"].cmd("bash /batfish_integration/server/run_server.sh 2>&1 > /batfish_server.log &"))
+host_dict["admin"].cmd("ifconfig eth0 up")
 
 info('*** Starting network\n')
 
 for host in host_dict.values():
+    host.setAdminConfig(pingmesh_admin_ip, trouble_report_collection_port)
+    host.setHostsFile("hosts.txt")
     host.start()
 
 for switch in switch_dict.keys():
@@ -799,9 +877,9 @@ for switch in switch_dict.keys():
 net.start()
 
 # restart frr to solve the uninstalled route issue
-time.sleep(20)
-for switch in {"s6", "s7", "s13", "s14"}:
-    switch_dict[switch].cmd("/etc/init.d/frr restart")
+# time.sleep(20)
+# for switch in {"s6", "s7", "s13", "s14"}:
+#     switch_dict[switch].cmd("/etc/init.d/frr restart")
 
 info('*** Running CLI\n')
 

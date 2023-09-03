@@ -867,9 +867,6 @@ class Docker ( Node ):
         self.master = None
         self.slave = None
 
-        # shutdown the control port connected to docker network
-        self.cmd("ifconfig eth0 down")
-
     def build(self, **kwargs):
         image, output = self.d_client.images.build(**kwargs)
         output_str = parse_build_output(output)
@@ -1189,6 +1186,31 @@ class Docker ( Node ):
             error("Problem reading cgroup info: %r\n" % cmd)
             return -1
 
+    def getLANIp(self):
+        return self.cmd("hostname -i").strip()
+
+class DockerPingHost( Docker ):
+    """
+    Noe that represents a host that runs pingmesh
+    """
+    def __init__(self, name, monitor, **kwargs):
+        super().__init__(name, **kwargs)
+        self.pingmesh_client = monitor
+        self.hosts = "hosts.txt"
+
+    def setAdminConfig(self, adminIP, troubleReportCollectionPort):
+        self.adminIP = adminIP
+        self.adminPort = troubleReportCollectionPort
+
+    def setHostsFile(self, hosts):
+        self.hosts = hosts
+
+    def start(self):
+        super().start()
+        os.system("docker cp {} mn.{}:/pingmesh_client".format(self.pingmesh_client, self.name))
+        os.system("docker cp {} mn.{}:/hosts".format(self.hosts, self.name))
+        self.cmd("python3 /pingmesh_client --hosts /hosts --admin-ip {} --admin-port {} 2>&1 > pingmesh_client.log &".format(self.adminIP, self.adminPort))
+
 class DockerRouter( Docker ):
     """
     Node that represents a router running in an indepedent container
@@ -1223,6 +1245,10 @@ class DockerRouter( Docker ):
         # configure the loopback interface with a unique IP address
         self.loopbackIP = "192.168.19.{}".format(int(self.name[1:]) + 1)
         self.cmd("ifconfig lo {} netmask 255.255.255.255 up".format(self.loopbackIP))
+        self.cmd("ip route add {} dev lo".format(self.loopbackIP))
+
+        # VRF Config
+        self.vrfDict = dict()
 
     def start(self):
         super().start()
@@ -1304,6 +1330,21 @@ class DockerRouter( Docker ):
 
     def getLoopbackIP(self) -> str:
         return self.loopbackIP
+
+    def addVRF(self, name, tableId):
+        self.vrfDict[name] = tableId
+        self.cmd("ip link add {} type vrf table {}".format(name, tableId))
+        self.cmd("ip link set {} up".format(name))
+        self.cmd("ip link add {}-br type bridge".format(name))
+        self.cmd("ip link set {}-br vrf {} up".format(name, name))
+
+    def attachIntfToVRF(self, intfName, vrf):
+        self.cmd("ip link set {} master {}-br".format(intfName, vrf))
+
+    def addVxlanIntf(self, name, vni, vrf="default"):
+        self.cmd("ip link add {} type vxlan id {} dstport 4789 learning".format(name, vni))
+        self.cmd("ip link set {} master {}-br".format(name, vrf))
+        self.cmd("ip link set {} up".format(name))
 
 class DockerP4Router( DockerRouter ):
     """
@@ -1547,7 +1588,7 @@ class DockerP4Router( DockerRouter ):
 
         # import runtime api if path is not null
         if self.runtime_api:
-            os.system("docker cp " + self.runtime_api + " " + self.dc['Id'] + ":/usr/local/lib/python3.5/site-packages/runtime_API.py")
+            os.system("docker cp " + self.runtime_api + " " + self.dc['Id'] + ":/tmp/runtime_API.py")
 
         # import switch_agent if path is not null
         if self.switch_agent:

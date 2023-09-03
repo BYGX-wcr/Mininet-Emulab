@@ -135,20 +135,24 @@ class NodeList:
     def __init__(self):
         self.nodeDict = dict()
 
-    def addNode(self, name, ip, nodeType):
+    def addNode(self, name, lanIp, nodeType, loopbackIp = None):
         if name in self.nodeDict.keys():
             return
             
-        self.nodeDict[name] = [0, ip.split("/")[0], nodeType]
+        self.nodeDict[name] = [0, lanIp, loopbackIp.split("/")[0] if loopbackIp != None else None, nodeType]
 
     def addLink(self, name1, name2, ip1, ip2):
         port1 = self.nodeDict[name1][0]
         self.nodeDict[name1].append("{}-{}-{}".format(port1, ip1, name2))
         self.nodeDict[name1][0] += 1
+        if self.nodeDict[name1][2] == None:
+            self.nodeDict[name1][2] = ip1.split("/")[0]
 
         port2 = self.nodeDict[name2][0]
         self.nodeDict[name2].append("{}-{}-{}".format(port2, ip2, name1))
         self.nodeDict[name2][0] += 1
+        if self.nodeDict[name2][2] == None:
+            self.nodeDict[name2][2] = ip2.split("/")[0]
 
     def writeFile(self, filepath):
         with open(filepath, "w") as file:
@@ -158,6 +162,12 @@ class NodeList:
                     file.write(" " + str(item))
 
                 file.write("\n")
+
+    def writeHostList(self, filepath):
+        with open(filepath, "w") as file:
+            for node in self.nodeDict.keys():
+                if self.nodeDict[node][3] == "host":
+                    file.write("{} {} {}\n".format(self.nodeDict[node][2], node, self.nodeDict[node][1]))
 
 # used for test
 if __name__ == "__main__":
