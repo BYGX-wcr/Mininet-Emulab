@@ -877,9 +877,9 @@ for switch in switch_dict.keys():
 net.start()
 
 # restart frr to solve the uninstalled route issue
-# time.sleep(20)
-# for switch in {"s6", "s7", "s13", "s14"}:
-#     switch_dict[switch].cmd("/etc/init.d/frr restart")
+time.sleep(20)
+for switch in {"s6", "s7", "s13", "s14"}:
+    switch_dict[switch].cmd("/etc/init.d/frr restart")
 
 info('*** Running CLI\n')
 
