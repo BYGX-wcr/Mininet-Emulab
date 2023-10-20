@@ -1264,6 +1264,9 @@ class DockerRouter( Docker ):
             if self.daemonsOptions[protocol] == "yes":
                 self.setupRoutingConfigByProtocol(protocol)
 
+        # disable all reverse path filters
+        self.cmd("sysctl net.ipv4.conf.all.rp_filter=0")
+
         # start quagga
         info("Start {} Daemons\n".format(self.software))
         self.cmd("route del default")
@@ -1336,15 +1339,39 @@ class DockerRouter( Docker ):
         self.cmd("ip link add {} type vrf table {}".format(name, tableId))
         self.cmd("ip link set {} up".format(name))
         self.cmd("ip link add {}-br type bridge".format(name))
-        self.cmd("ip link set {}-br vrf {} up".format(name, name))
+        self.cmd("ip link set {}-br master {} addrgenmode none up".format(name, name))
 
-    def attachIntfToVRF(self, intfName, vrf):
-        self.cmd("ip link set {} master {}-br".format(intfName, vrf))
+    def attachIntfToL2VNI(self, intfName, vni, brname=None):
+        if brname != None:
+            self.cmd("ip link set {} master {}".format(intfName, brname))
+        else:
+            brname = "br" + str(vni)
+            self.cmd("ip link set {} master {}".format(intfName, brname))
 
-    def addVxlanIntf(self, name, vni, vrf="default"):
-        self.cmd("ip link add {} type vxlan id {} dstport 4789 learning".format(name, vni))
-        self.cmd("ip link set {} master {}-br".format(name, vrf))
-        self.cmd("ip link set {} up".format(name))
+    def addL2VNI(self, vni, brip, devname=None, brname=None, vrf="default"):
+        """Add a L2 VNI to the router, arg:brip specifies the IP address of the bridge of this VNI, arg:devname specifies the name of the vxlan device, arg:vrf specifies which vrf the VNI is attached to"""
+        if devname == None:
+            devname = "vni" + str(vni)
+        if brname == None:
+            brname = "br" + str(vni)
+        self.cmd("ip link add {} type bridge".format(brname))
+        self.cmd("ip link set {} addr {}".format(brname, Subnet.ipToMac(brip)))
+        self.cmd("ip link set {} master {}".format(brname, vrf))
+        self.cmd("ip addr add {} dev {}".format(brip, brname))
+        self.cmd("ip link add {} type vxlan local {} dstport 4789 id {} nolearning".format(devname, self.getLoopbackIP(), vni))
+        self.cmd("ip link set {} master {} addrgenmode none".format(devname, brname))
+        self.cmd("ip link set {} type bridge_slave neigh_suppress on learning off".format(devname))
+        self.cmd("ip link set {} up".format(devname))
+        self.cmd("ip link set {} up".format(brname))
+
+    def addL3VNI(self, vni, devname=None, vrf="default"):
+        """Add a L3 VNI to the router, arg:devname specifies the name of the vxlan device, arg:vrf specifies which vrf the VNI is attached to"""
+        if devname == None:
+            devname = "vni" + str(vni)
+        self.cmd("ip link add {} type vxlan local {} id {} dstport 4789 nolearning".format(devname, self.getLoopbackIP(), vni))
+        self.cmd("ip link set {} master {}-br addrgenmode none".format(devname, vrf))
+        self.cmd("ip link set {} type bridge_slave neigh_suppress on learning off".format(devname, vrf))
+        self.cmd("ip link set {} up".format(devname))
 
 class DockerP4Router( DockerRouter ):
     """
@@ -1535,8 +1562,7 @@ class DockerP4Router( DockerRouter ):
         self.cmd("ethtool --offload cp-egress rx off")
         self.cmd("ethtool --offload cp-egress tx off")
 
-        # disable rp_filters
-        self.cmd("sysctl net.ipv4.conf.all.rp_filter=0")
+        # disable rp_filter for cp-ingress
         self.cmd("sysctl net.ipv4.conf.cp-ingress.rp_filter=0")
         self.cmd("ifconfig cp-ingress down; ifconfig cp-ingress up")
 
@@ -1636,6 +1662,10 @@ class DockerP4Router( DockerRouter ):
 
         super().start()
 
+    def attachIntfToL2VNI(self, intfName, vni, brname=None):
+        super().attachIntfToL2VNI(intfName, vni, brname)
+        self.cmd("ebtables -t filter -A FORWARD  -i {} -p ip -j DROP".format(intfName, brname))
+        self.cmd("ebtables -t filter -A INPUT  -i {} -p ip -j DROP".format(intfName, brname))
 
 class CPULimitedHost( Host ):
 
