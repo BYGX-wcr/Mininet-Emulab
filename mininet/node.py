@@ -1248,7 +1248,19 @@ class DockerRouter( Docker ):
         self.cmd("ip route add {} dev lo".format(self.loopbackIP))
 
         # VRF Config
-        self.vrfDict = dict()
+        self.vrfDict = dict() # map VRF names to IDs
+        self.vrfDict["default"] = 0 # Set the ID of default VRF to be 0
+        self.tableVrfDict = dict() # map Linux routing tables to VRF IDs
+        self.tableVrfDict[254] = 0
+        self.tableVrfDict[255] = 0
+        self.vrfVniDict = dict() # the first vni is the l3 vni, all following vni are l2 vni attached to this vrf
+        self.vrfVniDict['default'] = [None, []]
+
+        # BD config
+        self.bdIntfDict = dict() # keep info about which interfaces belong to a broadcast domain (equivalent to a L2 VNI)
+
+        # effective interface lists
+        self.effIntfs = dict()
 
     def start(self):
         super().start()
@@ -1339,39 +1351,67 @@ class DockerRouter( Docker ):
         self.cmd("ip link add {} type vrf table {}".format(name, tableId))
         self.cmd("ip link set {} up".format(name))
         self.cmd("ip link add {}-br type bridge".format(name))
-        self.cmd("ip link set {}-br master {} addrgenmode none up".format(name, name))
+        self.cmd("ip link set {}-br master {} addrgenmode none".format(name, name))
+        self.cmd("ip link set {}-br up".format(name))
+        self.tableVrfDict[int(tableId)] = int(tableId)
+        self.vrfVniDict[name] = [None, []]
 
     def attachIntfToL2VNI(self, intfName, vni, brname=None):
-        if brname != None:
-            self.cmd("ip link set {} master {}".format(intfName, brname))
-        else:
+        """Attach an interface to a L2 virtual network domain specified by arg:vni"""
+        if brname == None:
             brname = "br" + str(vni)
-            self.cmd("ip link set {} master {}".format(intfName, brname))
+        # Set VRF for Intf to be the VRF of the bridge
+        intf = self.nameToIntf[intfName]
+        brIntf = self.nameToIntf[brname]
+        intf.setVRF(brIntf.VRF())
+        intf.setBDI(brIntf.BDI())
+        self.cmd("ip link set {} down".format(intfName))
+        self.cmd("ip link set {} master {} addrgenmode none".format(intfName, brname))
+        self.cmd("ip link set {} up".format(intfName))
+        self.bdIntfDict[brIntf.BDI()].append(intf)
+
+    def addIntf(self, intf, port=None, moveIntfFn=moveIntf):
+        """Override the super's addIntf and register effective interfaces"""
+        super().addIntf(intf, port, moveIntfFn)
+        self.effIntfs[intf.name] = self.ports[intf]
 
     def addL2VNI(self, vni, brip, devname=None, brname=None, vrf="default"):
         """Add a L2 VNI to the router, arg:brip specifies the IP address of the bridge of this VNI, arg:devname specifies the name of the vxlan device, arg:vrf specifies which vrf the VNI is attached to"""
         if devname == None:
-            devname = "vni" + str(vni)
+            devname = "vxlan" + str(vni)
         if brname == None:
             brname = "br" + str(vni)
         self.cmd("ip link add {} type bridge".format(brname))
-        self.cmd("ip link set {} addr {}".format(brname, Subnet.ipToMac(brip)))
-        self.cmd("ip link set {} master {}".format(brname, vrf))
-        self.cmd("ip addr add {} dev {}".format(brip, brname))
+        self.cmd("ip link set {} addrgenmode none".format(brname))
+        intf = Intf(brname, node=self, moveIntfFn=lambda intf, dstNode: None)
+        intf.setMAC(Subnet.ipToMac(brip))
+        intf.setIP(brip)
+        intf.setVRF(vrf)
+        intf.setBDI(vni)
+        self.cmd("ebtables -t filter -A INPUT  -i {} -j DROP".format(devname))
+        self.cmd("ebtables -t filter -A INPUT  -i {} -j DROP".format(brname))
+
         self.cmd("ip link add {} type vxlan local {} dstport 4789 id {} nolearning".format(devname, self.getLoopbackIP(), vni))
         self.cmd("ip link set {} master {} addrgenmode none".format(devname, brname))
-        self.cmd("ip link set {} type bridge_slave neigh_suppress on learning off".format(devname))
+        self.cmd("ip link set {} type bridge_slave neigh_suppress off learning off".format(devname))
         self.cmd("ip link set {} up".format(devname))
         self.cmd("ip link set {} up".format(brname))
+
+        # add l2 vni to vrf
+        self.vrfVniDict[vrf][1].append(vni)
+
+        # init BD interface list
+        self.bdIntfDict[intf.BDI()] = []
 
     def addL3VNI(self, vni, devname=None, vrf="default"):
         """Add a L3 VNI to the router, arg:devname specifies the name of the vxlan device, arg:vrf specifies which vrf the VNI is attached to"""
         if devname == None:
-            devname = "vni" + str(vni)
+            devname = "vxlan" + str(vni)
         self.cmd("ip link add {} type vxlan local {} id {} dstport 4789 nolearning".format(devname, self.getLoopbackIP(), vni))
         self.cmd("ip link set {} master {}-br addrgenmode none".format(devname, vrf))
         self.cmd("ip link set {} type bridge_slave neigh_suppress on learning off".format(devname, vrf))
         self.cmd("ip link set {} up".format(devname))
+        self.vrfVniDict[vrf][0] = vni
 
 class DockerP4Router( DockerRouter ):
     """
@@ -1420,6 +1460,9 @@ class DockerP4Router( DockerRouter ):
         # ACL(access control list) configuration
         self.aclConfig = []
 
+        self.adminIP = None
+        self.faultReportCollectionPort = None
+
     def setAdminConfig(self, adminIP, faultReportCollectionPort):
         self.adminIP = adminIP
         self.faultReportCollectionPort = faultReportCollectionPort
@@ -1459,7 +1502,7 @@ class DockerP4Router( DockerRouter ):
             for entry in self.aclConfig:
                 file.write("table_add Filter_ACL acl_drop " + " ".join(entry) + " => 1\n")
 
-    def setupSubnetTable(self, macTable, subnet, DMTName="DstMac_RW", DMTAction="set_dmac", LpmName="Ipv4_FIB", LpmAction="ipv4_forward"):
+    def setupSubnetTable(self, macTable, subnet, DMTName="DstMac_FIB", DMTAction="set_dmac"):
         """
         Prepare subnet entries of the Dst MAC table and Ipv4 LPM table.
         """
@@ -1469,15 +1512,15 @@ class DockerP4Router( DockerRouter ):
             for entry in macTable:
                 file.write("table_add {} {} {} => {}\n".format(DMTName, DMTAction, entry[0], entry[1]))
 
-            prefixLen = subnet.getPrefixLen()
-            # write LPM commands into the file
-            for port, intf in self.intfs.items():
-                ip = intf.IP()
-                if subnet.extractPrefix(ip, prefixLen)+"/"+str(prefixLen) == subnet.getNetworkPrefix():
-                    file.write("table_add {} {} {} => 0.0.0.1 {}\n".format(LpmName, LpmAction, subnet.getNetworkPrefix(), port))
-                    break
+    def combineIpAndVrfToHex(self, ip, vrf):
+        addrBytes = ip.split(".")
+        field = int(vrf)
+        for i in range(len(addrBytes)):
+            field = field << 8
+            field += int(addrBytes[i])
+        return "0x{:x}".format(field)
 
-    def setupStartupTables(self, SMTName="SrcMac_RW", SMTAction="set_smac", DMTName="DstMac_RW", DMTAction="set_dmac", LpmName="Ipv4_FIB", LpmAction="ipv4_forward"):
+    def setupStartupTables(self, SMTName="SrcMac_RW", SMTAction="set_smac", DMTName="DstMac_FIB", DMTAction="set_dmac", VDVName="VxlanDecap_Virtual", L3VDVAction="l3vxlan_decap", L2VDVAction="l2vxlan_decap", SVRFName="SetVrf_Virtual", SVRFAction="set_vrf", SBDName="SetBD_Virtual", SBDAction="set_broadcast_domain", EMCASTName="EthernetMcast_FIB", EMCASTAction="l2mcast_forward"):
         """
         Prepare entries for the local switch interfaces including data ports, control-plane ports and data-plane ports.
         SMT -> Source Mac Table
@@ -1489,25 +1532,70 @@ class DockerP4Router( DockerRouter ):
 
             # prepare dp-egress and local data port entries for src mac table
             file.write("table_add {} {} {} => {}\n".format(SMTName, SMTAction, self.cpu_input_port, "aa:00:00:00:00:01"))
-            for port, intf in self.intfs.items():
+            for intfName, port in self.effIntfs.items():
+                intf = self.intfs[port]
                 mac = intf.MAC()
                 file.write("table_add {} {} {} => {}\n".format(SMTName, SMTAction, port, mac))
             
             # prepare the cp-ingress entry for dst mac table
             file.write("table_add {} {} {} => {}\n".format(DMTName, DMTAction, "0.0.0.0", "aa:00:00:00:00:02"))
 
-            # prepare local data port entries for ipv4 LPM table
-            for port, intf in self.intfs.items():
-                ip = intf.IP()
-                file.write("table_add {} {} {}/32 => 0.0.0.0 {}\n".format(LpmName, LpmAction, ip, self.cpu_input_port))
-            # prepare local loopback interface entry
-            file.write("table_add {} {} {}/32 => 0.0.0.0 {}\n".format(LpmName, LpmAction, self.loopbackIP, self.cpu_input_port))
-
             # configure mirroring_session for potential usage
             file.write("mirroring_add 819 80\n")
-    
+            file.write("mirroring_add 114 80\n")
+
+            # prepare entries for VXLANDecap
+            for vrf, vni_vec in self.vrfVniDict.items():
+                l3vni = vni_vec[0]
+                file.write("table_add {tname} {aname} {lo_ip} {vni} =>  {vni} \n".format(tname=VDVName, aname=L3VDVAction, lo_ip=self.loopbackIP, vni=l3vni))
+
+                for l2vni in vni_vec[1]:
+                    file.write("table_add {tname} {aname} {lo_ip} {vni} => {vni} \n".format(tname=VDVName, aname=L2VDVAction, lo_ip=self.loopbackIP, vni=l2vni))
+
+            # prepare entries for SetVrf
+            for intfName, port in self.effIntfs.items():
+                intf = self.intfs[port]
+                vrf_id = self.vrfDict[intf.VRF()]
+                file.write("table_add {} {} {} => {}\n".format(SVRFName, SVRFAction, port, vrf_id))
+            # prepare the SetVrf for dp-ingress interface
+            file.write("table_add {} {} {} => {} \n".format(SVRFName, SVRFAction, self.cpu_output_port, 0))
+
+            # prepare entries for SetBD
+            for intfName, port in self.effIntfs.items():
+                intf = self.intfs[port]
+                bdi = intf.BDI()
+                file.write("table_add {} {} {} => {}\n".format(SBDName, SBDAction, port, bdi))
+
+            # prepare entries for Ethernet Mcast
+            for bdi, intfs in self.bdIntfDict.items():
+                file.write("table_add {} {} {} => {}\n".format(EMCASTName, EMCASTAction, bdi, bdi)) # assume that vni = bdi
+
+                # create mcast node
+                ports = ""
+                for intf in intfs:
+                    ports += str(self.ports[intf]) + " "
+                file.write("mc_mgrp_add {gid} {port_list}\n".format(gid=bdi, port_list=ports))
+
+    def setupIntfTable(self):
+        """
+        Prepare the table entries used by the rt_mediator to map interfaces to P4 BMv2 names
+        """
+        filename = "./IntfPortDict-{}.txt".format(self.name)
+        with open(filename, "w", encoding="utf-8") as file:
+            for intfName, port in self.effIntfs.items():
+                file.write("{} {}\n".format(intfName, port))
+
+    def setupVrfTable(self):
+        """
+        Prepare the table entries used by the rt_mediator to map routing tables to VRFs
+        """
+        filename = "./TableVrfDict-{}.txt".format(self.name)
+        with open(filename, "w", encoding="utf-8") as file:
+            for tableId, vrfId in self.tableVrfDict.items():
+                file.write("{} {}\n".format(tableId, vrfId))
+
     def installTables(self):
-        # copy the file into the tmp directory of docker container
+        # copy the startup table file into the tmp directory of docker container
         filename = "./Startup-{}.txt".format(self.name)
         os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/Startup_cmds")
 
@@ -1538,6 +1626,26 @@ class DockerP4Router( DockerRouter ):
         except:
             print("No ACL-{}.txt! ".format(self.name))
 
+        # copy the table-vrf file into the tmp directory of docker container
+        filename = "./TableVrfDict-{}.txt".format(self.name)
+        os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/TableVrfDict")
+
+        # remove the table-vrf file
+        try:
+            os.remove(filename)
+        except:
+            print("No TableVrfDict-{}.txt! ".format(self.name))
+
+        # copy the intf-port file into the tmp directory of docker container
+        filename = "./IntfPortDict-{}.txt".format(self.name)
+        os.system("docker cp " + filename + " " + self.dc['Id'] + ":/tmp/IntfPortDict")
+
+        # remove the intf-port file
+        try:
+            os.remove(filename)
+        except:
+            print("No IntfPortDict-{}.txt! ".format(self.name))
+
     def start(self, debug = False):
         """Start up a new P4 switch"""
         # create & start a veth pair for CPU(Control-plane) input port
@@ -1563,6 +1671,7 @@ class DockerP4Router( DockerRouter ):
         self.cmd("ethtool --offload cp-egress tx off")
 
         # disable rp_filter for cp-ingress
+        self.cmd("sysctl net.ipv4.conf.all.rp_filter=0")
         self.cmd("sysctl net.ipv4.conf.cp-ingress.rp_filter=0")
         self.cmd("ifconfig cp-ingress down; ifconfig cp-ingress up")
 
@@ -1570,23 +1679,28 @@ class DockerP4Router( DockerRouter ):
         self.cmd("sysctl net.ipv4.ip_forward=0")
 
         # setup route table 1
-        self.cmd("ip route add default via 127.0.1.3 dev cp-egress table 1")
+        self.cmd("ip route add default via 127.0.1.3 dev cp-egress table 252")
         # Configure Policy Routing
-        self.cmd("ip rule add fwmark 0x8 table 1")
+        self.cmd("ip rule add fwmark 0x8 table 252")
         # setup arp entry for dp-ingress interface
         self.cmd("arp -s -i cp-egress 127.0.1.3 aa:00:00:00:00:03")
 
         # merge arguments
         args = [self.target_path]
-        for port, intf in self.intfs.items():
-            args.extend(['-i', str(port) + "@" + intf.name])
+        for intfName, port in self.effIntfs.items():
+            args.extend(['-i', str(port) + "@" + intfName])
 
             # add iptables entries to block input packets
-            self.cmd("iptables -t filter -A INPUT -p ospf -i {} -j ACCEPT".format(intf.name)) # exclude OSPF packets
-            self.cmd("iptables -t filter -A INPUT -p all ! -d 224.0.0.0/4 -i {} -j DROP".format(intf.name)) # exclude multicast packets for reserved addresses
+            self.cmd("iptables -t filter -A INPUT -p ospf -i {} -j ACCEPT".format(intfName)) # exclude OSPF packets
+            self.cmd("iptables -t filter -A INPUT -p all ! -d 224.0.0.0/4 -i {} -j DROP".format(intfName)) # exclude multicast packets for reserved addresses
+            self.cmd("iptables -t filter -A FORWARD -p all -i {} -j DROP".format(intfName)) # exclude multicast packets for reserved addresses
 
             # add iptables entries to mark output packets
-            self.cmd("iptables -t mangle -A OUTPUT -p all -o {} -j MARK --set-mark 0x8".format(intf.name))
+            self.cmd("iptables -t mangle -A OUTPUT -p all -o {} -j MARK --set-mark 0x8".format(intfName))
+
+         # bind data-plane ports
+        args.extend(['-i', str(self.cpu_input_port) + '@' + "dp-egress"])
+        args.extend(['-i', str(self.cpu_output_port) + '@' + "dp-ingress"])
 
         if self.pcap_dump:
             args.extend(["--pcap", self.pcap_dump])
@@ -1599,9 +1713,6 @@ class DockerP4Router( DockerRouter ):
         if self.log_console:
             args.append("--log-console")
         args.extend(['--log-level', self.log_level])
-        # bind data-plane ports
-        args.extend(['-i', str(self.cpu_input_port) + '@' + "dp-egress"])
-        args.extend(['-i', str(self.cpu_output_port) + '@' + "dp-ingress"])
 
         # import json file & merge arguments
         os.system("docker cp " + self.json_path + " " + self.dc['Id'] + ":/tmp/running.json")
@@ -1634,23 +1745,28 @@ class DockerP4Router( DockerRouter ):
 
         self.setupStartupTables()
         self.setupACL()
+        self.setupVrfTable()
+        self.setupIntfTable()
         self.installTables()
         # install initial table entries
         check_point1 = "init"
         check_point2 = "init"
         check_point3 = "init"
         while "RuntimeCmd" not in check_point1 or "RuntimeCmd" not in check_point2 or "RuntimeCmd" not in check_point3:
-            check_point1 = self.cmd("simple_switch_CLI < /tmp/Startup_cmds")
-            check_point2 = self.cmd("simple_switch_CLI < /tmp/Subnet_cmds")
-            check_point3 = self.cmd("simple_switch_CLI < /tmp/ACL_cmds")
+            check_point1 = self.cmd("python3 /tmp/runtime_API.py < /tmp/Startup_cmds")
+            check_point2 = self.cmd("python3 /tmp/runtime_API.py < /tmp/Subnet_cmds")
+            check_point3 = self.cmd("python3 /tmp/runtime_API.py < /tmp/ACL_cmds")
 
         # start rt_mediator
         if self.rt_mediator != None:
             if debug == True:
                 self.cmd("strace -f -o /rt_mediator.strace python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log > /rt_mediator.out &")
             else:
-                print("Start rt_mediator on {} with {}".format(self.name, "python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log --report-server-ip {} --report-server-port {} > /rt_mediator.out &".format(self.adminIP, self.faultReportCollectionPort)))
-                self.cmd("python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log --report-server-ip {} --report-server-port {} > /rt_mediator.out &".format(self.adminIP, self.faultReportCollectionPort))
+                print("Start rt_mediator on {} with {}".format(self.name, "python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log --report-server-ip {} --report-server-port {} --table-vrf-file /tmp/TableVrfDict --intf-port-file /tmp/IntfPortDict > /rt_mediator.out &".format(self.adminIP, self.faultReportCollectionPort)))
+                self.cmd("python3 /tmp/rt_mediator --log-file /tmp/rt_mediator.log --report-server-ip {} --report-server-port {} --table-vrf-file /tmp/TableVrfDict --intf-port-file /tmp/IntfPortDict > /rt_mediator.out &".format(self.adminIP, self.faultReportCollectionPort))
+
+            while self.cmd("cat /rt_mediator_init_succ") != "1":
+                time.sleep(1)
 
         # start switch_agent
         if self.switch_agent != None:
@@ -1662,10 +1778,19 @@ class DockerP4Router( DockerRouter ):
 
         super().start()
 
+    def addL2VNI(self, vni, brip, devname=None, brname=None, vrf="default"):
+        if devname == None:
+            devname = "vxlan" + str(vni)
+        if brname == None:
+            brname = "br" + str(vni)
+
+        super().addL2VNI(vni, brip, devname, brname, vrf)
+        self.effIntfs.pop(brname)
+
     def attachIntfToL2VNI(self, intfName, vni, brname=None):
         super().attachIntfToL2VNI(intfName, vni, brname)
-        self.cmd("ebtables -t filter -A FORWARD  -i {} -p ip -j DROP".format(intfName, brname))
-        self.cmd("ebtables -t filter -A INPUT  -i {} -p ip -j DROP".format(intfName, brname))
+        self.cmd("ebtables -t filter -A FORWARD  -i {} -p ip -j DROP".format(intfName))
+        self.cmd("ebtables -t filter -A INPUT  -i {} -p ip -j DROP".format(intfName))
 
 class CPULimitedHost( Host ):
 

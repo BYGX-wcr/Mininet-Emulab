@@ -49,17 +49,18 @@ topo.addNode(host_dict['admin'].name, lanIp=host_dict['admin'].getLANIp(), nodeT
 
 # s0 s1 s2
 for i in range(0, 3):
-    new_switch = net.addDocker('s{}'.format(switch_count), cls=DockerRouter, 
+    new_switch = net.addDocker('s{}'.format(switch_count), cls=DockerP4Router, 
                          dimage=switch_image,
                          software="frr",
-                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v1.json", 
+                         json_path="/m/local2/wcr/P4-Switches/vxlan_switch.json", 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
-                         rt_mediator= "/m/local2/wcr/P4-Switches/rt_mediator.py",
+                         rt_mediator= "/m/local2/wcr/P4-Switches/overlay_rt_mediator.py",
                          runtime_api= "/m/local2/wcr/P4-Switches/runtime_API.py",
                          switch_agent= "/m/local2/wcr/P4-Switches/switch_agent.py",
                          packet_injector= "/m/local2/wcr/P4-Switches/packet_injector.py",
+                         bgp_adv_modifier= "/m/local2/wcr/P4-Switches/bgp_adv_modify.o",
                          bgpd='yes')
     as_map['s{}'.format(switch_count)] = i + 1
     switch_dict['s{}'.format(switch_count)] = new_switch
@@ -122,9 +123,6 @@ for t in switch_pairs:
     switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} route-map OUT_AS_RMAP out".format(ip1.split("/")[0]))
     switch_dict[index2].addRoutingConfig("bgpd", "neighbor {} route-map IN_AS_RMAP in".format(ip1.split("/")[0]))
 
-    # # add new advertised network prefix
-    # switch_dict[index1].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
-    # switch_dict[index2].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 
     snet_counter += 1
 
@@ -142,7 +140,6 @@ for s in {"s0", "s1", "s2"}:
     switch_dict[s].addRoutingConfig(configStr="bgp community-list standard OUT_AS permit 0:1")
     switch_dict[s].addRoutingConfig(configStr="ip prefix-list INTERNET_PREFIX_LIST permit 10.0.0.0/16 ge 16")
     switch_dict[s].addRoutingConfig(configStr="ip prefix-list BACKBONE_PREFIX_LIST permit 192.168.19.0/24 ge 24")
-    # switch_dict[s].addRoutingConfig("bgpd", "network " + switch_dict[s].getLoopbackIP() + "/32")
 
 # s0 advertise and accept routes from all AS
 for i in {1, 2, 3}:
@@ -190,7 +187,6 @@ for t in hs_pairs:
     topo.addLink(switch_dict[sid].name, host_dict[hid].name, ip1, ip2)
 
     # add a new advertised network prefix for the AS
-    # switch_dict[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
     switch_dict[sid].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit " + snet_list[snet_counter].getNetworkPrefix())
 
     snet_counter += 1
@@ -228,7 +224,6 @@ for t in hs_pairs:
     topo.addLink(switch_dict[sid].name, host_dict[hid].name, ip1, ip2)
 
     # add a new advertised network prefix for the AS
-    # switch_dict[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
     switch_dict[sid].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit " + snet_list[snet_counter].getNetworkPrefix())
 
     snet_counter += 1
@@ -262,7 +257,6 @@ topo.addLink(switch_dict[sid].name, host_dict[hid].name, ip1, ip2)
 host_dict[hid].setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 
 # add a new advertised network prefix for the AS
-# switch_dict[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 switch_dict[sid].addRoutingConfig(configStr="ip prefix-list AS_PREFIX_LIST permit " + snet_list[snet_counter].getNetworkPrefix())
 
 # set up admin_ip
@@ -368,18 +362,24 @@ for snet in snet_list:
 info('*** Exp Setup\n')
 
 topo.writeFile("topo.txt")
+topo.writeHostList("hosts.txt")
 os.system("docker cp /m/local2/wcr/Diagnosis-driver/driver.tar.bz mn.admin:/")
 os.system("docker cp /m/local2/wcr/Mininet-Emulab/topo.txt mn.admin:/")
+os.system("docker cp /m/local2/wcr/Mininet-Emulab/hosts.txt mn.admin:/")
 
 print("tar: ", host_dict["admin"].cmd("tar -xf /driver.tar.bz -C /"))
 print("install dns: ", host_dict["admin"].cmd("python3 /network_graph.py /topo.txt"))
+print("start batfish server: ", host_dict["admin"].cmd("bash /batfish_integration/server/run_server.sh 2>&1 > /batfish_server.log &"))
+host_dict["admin"].cmd("ifconfig eth0 up")
 
 info('*** Starting network\n')
 
 for host in host_dict.values():
+    # host.setHostsFile("hosts.txt")
     host.start()
 
 for switch in switch_dict.keys():
+    switch_dict[switch].setAdminConfig(admin_ip, fault_report_collection_port)
     switch_dict[switch].start()
 
 net.start()

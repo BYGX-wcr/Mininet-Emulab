@@ -44,6 +44,8 @@ class Intf( object ):
         self.link = link
         self.mac = mac
         self.ip, self.prefixLen = None, None
+        self.vrf = "default"
+        self.bdi = 0 # broadcast domain identifier
 
         # if interface is lo, we know the ip is 127.0.0.1.
         # This saves an ifconfig command per node
@@ -88,6 +90,15 @@ class Intf( object ):
                                  % ( ipstr, ) )
             self.ip, self.prefixLen = ipstr, prefixLen
             return self.cmd('ip', 'address', 'add', '%s/%s' % (ipstr, prefixLen), 'dev', self.name)
+        
+    def setVRF( self, vrfname ):
+        """Set the VRF"""
+        self.cmd("ip link set {} master {}".format(self.name, vrfname))
+        self.vrf = vrfname
+
+    def setBDI( self, bdi ):
+        """Set the BDI"""
+        self.bdi = bdi
 
     def setMAC( self, macstr ):
         """Set the MAC address for an interface.
@@ -133,6 +144,14 @@ class Intf( object ):
     def IP( self ):
         "Return IP address"
         return self.ip
+    
+    def VRF( self ):
+        """Return VRF name"""
+        return self.vrf
+    
+    def BDI( self ):
+        """Return broadcast domain identifier"""
+        return self.bdi
 
     def MAC( self ):
         "Return MAC address"
