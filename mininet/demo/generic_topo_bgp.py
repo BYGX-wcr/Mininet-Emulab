@@ -74,7 +74,6 @@ for i in range(0, 1):
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=1))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
     new_switch.addRoutingConfig("bgpd", "network {}/32".format(new_switch.getLoopbackIP()))
-    new_switch.addRoutingConfig("bgpd", "redistribute ospf")
     new_switch.addRoutingConfig("ospfd", "router ospf")
     new_switch.addRoutingConfig("ospfd", "ospf router-id " + new_switch.getLoopbackIP())
 
@@ -117,7 +116,6 @@ for i in range(0, 7):
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=2))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
     new_switch.addRoutingConfig("bgpd", "network {}/32".format(new_switch.getLoopbackIP()))
-    new_switch.addRoutingConfig("bgpd", "redistribute ospf")
     new_switch.addRoutingConfig("ospfd", "router ospf")
     new_switch.addRoutingConfig("ospfd", "ospf router-id " + new_switch.getLoopbackIP())
 
@@ -160,7 +158,6 @@ for i in range(0, 7):
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=3))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
     new_switch.addRoutingConfig("bgpd", "network {}/32".format(new_switch.getLoopbackIP()))
-    new_switch.addRoutingConfig("bgpd", "redistribute ospf")
     new_switch.addRoutingConfig("ospfd", "router ospf")
     new_switch.addRoutingConfig("ospfd", "ospf router-id " + new_switch.getLoopbackIP())
 
@@ -203,7 +200,6 @@ for i in range(0, 1):
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=4))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
     new_switch.addRoutingConfig("bgpd", "network {}/32".format(new_switch.getLoopbackIP()))
-    new_switch.addRoutingConfig("bgpd", "redistribute ospf")
     new_switch.addRoutingConfig("ospfd", "router ospf")
     new_switch.addRoutingConfig("ospfd", "ospf router-id " + new_switch.getLoopbackIP())
 
@@ -246,13 +242,16 @@ for i in range(0, 4):
     new_switch.addRoutingConfig("bgpd", "router bgp {asn}".format(asn=5))
     new_switch.addRoutingConfig("bgpd", "bgp router-id " + new_switch.getLoopbackIP())
     new_switch.addRoutingConfig("bgpd", "network {}/32".format(new_switch.getLoopbackIP()))
-    new_switch.addRoutingConfig("bgpd", "redistribute ospf")
     new_switch.addRoutingConfig("ospfd", "router ospf")
     new_switch.addRoutingConfig("ospfd", "ospf router-id " + new_switch.getLoopbackIP())
 
 info('*** Creating links & Configure routes\n')
 
 info('*** Global\n')
+
+border_switches = ["s0", "s1", "s2", "s3", "s8", "s9", "s10", "s15", "s16", "s17"]
+for s in border_switches:
+    switch_dict[s].addRoutingConfig("bgpd", "redistribute ospf")
 
 snet_list = list()
 for i in range(0, 20):
@@ -605,6 +604,7 @@ for t in hs_pairs:
 
     snet_list[snet_counter].addNode(switch_dict[sid])
     switch_dict[sid].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
+    switch_dict[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 
     host_dict[hid].setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 
@@ -709,6 +709,7 @@ for t in hs_pairs:
 
     snet_list[snet_counter].addNode(switch_dict[sid])
     switch_dict[sid].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
+    switch_dict[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 
     host_dict[hid].setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 
@@ -840,6 +841,7 @@ for t in hs_pairs:
     
     snet_list[snet_counter].addNode(switch_dict[sid])
     switch_dict[sid].addRoutingConfig("ospfd", "network " + snet_list[snet_counter].getNetworkPrefix() + " area {}".format(0))
+    switch_dict[sid].addRoutingConfig("bgpd", "network " + snet_list[snet_counter].getNetworkPrefix())
 
     host_dict[hid].setDefaultRoute("gw {}".format(ip1.split("/")[0]))
 
