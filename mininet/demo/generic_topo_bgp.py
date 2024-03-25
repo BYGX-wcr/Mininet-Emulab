@@ -26,7 +26,8 @@ host_image = "localhost/rockylinux:v2"
 host_dict = dict()
 host_count = 0
 
-switch_image = "localhost/p4switch-frr:v11"
+switch_image = "localhost/p4switch-frr:rockylinux-v3"
+switch_json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v2.json"
 switch_dict = dict()
 switch_count = 0
 as_map = dict()
@@ -50,7 +51,7 @@ for i in range(0, 1):
     new_switch = net.addDocker('s{}'.format(switch_count), cls=DockerP4Router, 
                          dimage=switch_image,
                          software="frr",
-                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v1.json", 
+                         json_path=switch_json_path, 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
@@ -92,7 +93,7 @@ for i in range(0, 7):
     new_switch = net.addDocker('s{}'.format(switch_count), cls=DockerP4Router, 
                          dimage=switch_image,
                          software="frr",
-                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v1.json", 
+                         json_path=switch_json_path, 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
@@ -134,7 +135,7 @@ for i in range(0, 7):
     new_switch = net.addDocker('s{}'.format(switch_count), cls=DockerP4Router, 
                          dimage=switch_image,
                          software="frr",
-                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v1.json", 
+                         json_path=switch_json_path, 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
@@ -176,7 +177,7 @@ for i in range(0, 1):
     new_switch = net.addDocker('s{}'.format(switch_count), cls=DockerP4Router, 
                          dimage=switch_image,
                          software="frr",
-                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v1.json", 
+                         json_path=switch_json_path, 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
@@ -218,7 +219,7 @@ for i in range(0, 4):
     new_switch = net.addDocker('s{}'.format(switch_count), cls=DockerP4Router, 
                          dimage=switch_image,
                          software="frr",
-                         json_path="/m/local2/wcr/P4-Switches/diagnosable_switch_v1.json", 
+                         json_path=switch_json_path, 
                          pcap_dump="/tmp",
                          log_console=True,
                          log_level="info",
